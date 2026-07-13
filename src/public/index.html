@@ -24,6 +24,13 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',syste
 .content.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:55vh;text-align:center}
 .content.empty h2{font-size:26px;font-weight:800;color:var(--cyan);margin-bottom:8px}
 .content.empty p{color:var(--muted);font-size:14px;max-width:440px;line-height:1.6}
+.content.empty .hero-search{display:flex;gap:10px;margin-top:28px;align-items:center;justify-content:center}
+.content.empty .hero-search input{width:420px;max-width:70vw;background:rgba(255,255,255,0.04);color:var(--text);border:1px solid var(--border);padding:14px 18px;font-size:14px;border-radius:10px;outline:none;font-family:'SF Mono','JetBrains Mono',monospace;transition:all 0.2s}
+.content.empty .hero-search input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px var(--glow)}
+.content.empty .hero-search button{padding:14px 28px;font-size:14px}
+#topSearch{display:none}
+.top.has-search #topSearch{display:flex}
+.top.has-search #topTitle{font-size:14px}
 
 .glass{background:var(--card);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:14px}
 .glass h3{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;font-weight:700}
@@ -88,10 +95,12 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',syste
 </style>
 </head>
 <body>
-<div class="top">
+<div class="top" id="topBar">
   <h1 id="topTitle">DECIPHER</h1>
-  <input type="text" id="tokenInput" placeholder="Enter Solana token address..." />
-  <button class="btn-cyan" id="analyzeBtn" onclick="analyze()">ANALYZE</button>
+  <span id="topSearch" style="display:flex;align-items:center;gap:8px;flex:1;max-width:460px;">
+    <input type="text" id="tokenInput" placeholder="Enter Solana token address..." style="flex:1;" />
+    <button class="btn-cyan" id="analyzeBtnTop" onclick="analyze()">ANALYZE</button>
+  </span>
   <button class="btn-sm" id="sniperBtn" onclick="scanSnipers()" style="display:none">SNIPERS</button>
   <button class="btn-sm" onclick="window.location.href='/setup'" style="margin-left:auto" title="API Settings">SETTINGS</button>
   <span id="tokenName" style="font-size:13px;color:var(--muted);display:none;"></span>
@@ -103,7 +112,11 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',syste
 
 <div class="content empty" id="content">
   <h2>DECIPHER</h2>
-  <p>Paste a Solana token address above. Instantly see holder concentration, wallet clusters, bundle detection, liquidity locks, developer history, social media red flags, whale monitoring, and a comprehensive risk score.</p>
+  <p>Paste a Solana token address below. Instantly see holder concentration, wallet clusters, bundle detection, liquidity locks, developer history, social media red flags, whale monitoring, and a comprehensive risk score.</p>
+  <div class="hero-search">
+    <input type="text" id="heroInput" placeholder="Enter Solana CA..." />
+    <button class="btn-cyan" id="heroAnalyzeBtn" onclick="analyzeFromHero()">ANALYZE</button>
+  </div>
 </div>
 
 <script>
@@ -149,15 +162,26 @@ var appData=null,currentToken='',priceInfo=null,priceHistory=[],priceInterval=nu
 })();
 
 document.getElementById('tokenInput').addEventListener('keydown',function(e){if(e.key==='Enter')analyze();});
+document.getElementById('heroInput').addEventListener('keydown',function(e){if(e.key==='Enter')analyzeFromHero();});
+
+function analyzeFromHero(){
+  var heroVal = document.getElementById('heroInput').value.trim();
+  if(!heroVal) return;
+  document.getElementById('tokenInput').value = heroVal;
+  analyze();
+}
 
 async function analyze(){
   var addr=document.getElementById('tokenInput').value.trim();if(!addr)return;
   currentToken=addr;appData=null;priceInfo=null;priceHistory=[];lastPriceUsd=0;
   if(priceInterval){clearInterval(priceInterval);priceInterval=null;}
+  var topBar=document.getElementById('topBar');
+  topBar.classList.add('has-search');
   var c=document.getElementById('content');c.className='content';
   c.style.animation='none';c.offsetHeight;c.style.animation='fadeIn 0.3s ease';
   c.innerHTML='<div class="loading"><div class="spinner"></div><br><span style="font-size:14px;">Analyzing</span><br><span class="mono" style="font-size:12px;">'+addr.slice(0,16)+'...</span></div>';
-  document.getElementById('analyzeBtn').disabled=true;
+  document.getElementById('analyzeBtnTop').disabled=true;
+  document.getElementById('heroAnalyzeBtn').disabled=true;
 
   try{
     var resp=await fetch('/api/check/'+encodeURIComponent(addr));
@@ -167,7 +191,7 @@ async function analyze(){
     c.style.opacity='0';c.style.transition='opacity 0.15s';
     setTimeout(function(){c.style.opacity='1';render();},100);
   }catch(err){c.innerHTML='<div class="error">'+(err.message||'Network error - check that the server is running')+'</div>';}
-  finally{document.getElementById('analyzeBtn').disabled=false;}
+  finally{document.getElementById('analyzeBtnTop').disabled=false;document.getElementById('heroAnalyzeBtn').disabled=false;}
 }
 
 function fmt(n){if(!n)return'0';if(n>=1e9)return(n/1e9).toFixed(2)+'B';if(n>=1e6)return(n/1e6).toFixed(2)+'M';if(n>=1e3)return(n/1e3).toFixed(2)+'K';if(n>=1)return n.toFixed(2);return n.toFixed(6);}
