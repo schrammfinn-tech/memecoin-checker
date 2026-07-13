@@ -46,8 +46,15 @@
       "output": "release"
     },
     "win": {
-      "target": ["zip"],
+      "target": ["nsis"],
       "icon": "src/public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "mac": {
       "target": ["dmg"]

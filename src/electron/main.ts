@@ -103,6 +103,11 @@ app.commandLine.appendSwitch("disable-software-rasterizer");
 app.whenReady().then(async () => {
   loadEnv();
 
+  console.log("HELIUS_RPC_URL after loadEnv:", process.env.HELIUS_RPC_URL || "(not set)");
+  console.log("SOLANA_RPC_URL after loadEnv:", process.env.SOLANA_RPC_URL || "(not set)");
+  const configured = !!(process.env.HELIUS_RPC_URL || "").trim() || !!(process.env.SOLANA_RPC_URL || "").trim();
+  console.log("RPC configured:", configured);
+
   try {
     const port = await startServer();
     createWindow(port);

@@ -4,6 +4,12 @@ import path from "path";
 import fs from "fs";
 import { apiRouter } from "./routes/api";
 
+function isRpcConfigured(): boolean {
+  const helius = (process.env.HELIUS_RPC_URL || "").trim();
+  const sol = (process.env.SOLANA_RPC_URL || "").trim();
+  return !!(helius || sol);
+}
+
 export function createApp(userDataPath?: string): express.Application {
   const app = express();
 
@@ -14,8 +20,7 @@ export function createApp(userDataPath?: string): express.Application {
 
   if (userDataPath) {
     app.get("/api/config/status", (_req, res) => {
-      const configured = !!(process.env.HELIUS_RPC_URL || process.env.SOLANA_RPC_URL);
-      res.json({ configured });
+      res.json({ configured: isRpcConfigured() });
     });
 
     app.post("/api/config/save", (req, res) => {
@@ -60,8 +65,8 @@ export function createApp(userDataPath?: string): express.Application {
     });
   }
 
-  app.get("/", (req, res) => {
-    if (userDataPath && !process.env.HELIUS_RPC_URL && !process.env.SOLANA_RPC_URL) {
+  app.get("/", (_req, res) => {
+    if (userDataPath && !isRpcConfigured()) {
       return res.sendFile(path.join(__dirname, "public", "setup.html"));
     }
     res.sendFile(path.join(__dirname, "public", "index.html"));

@@ -32,6 +32,9 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',syste
 .error-msg{background:rgba(243,139,168,0.08);border:1px solid rgba(243,139,168,0.2);color:var(--red);padding:12px;border-radius:8px;font-size:12px;margin-bottom:16px;display:none}
 .success-msg{background:rgba(166,227,161,0.08);border:1px solid rgba(166,227,161,0.2);color:var(--green);padding:12px;border-radius:8px;font-size:12px;margin-bottom:16px;display:none}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.15);border-top-color:var(--cyan);border-radius:50%;animation:spin 0.6s linear infinite;vertical-align:middle;margin-right:6px}@keyframes spin{to{transform:rotate(360deg)}}
+.status-row{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:14px}
+.status-row.configured{background:rgba(166,227,161,0.06);border:1px solid rgba(166,227,161,0.15);color:var(--green)}
+.status-row.not-configured{background:rgba(249,226,175,0.06);border:1px solid rgba(249,226,175,0.15);color:var(--yellow)}
 </style>
 </head>
 <body>
@@ -48,18 +51,46 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',syste
     <div class="hint">Sign up at <a href="https://helius.dev" target="_blank">helius.dev</a> to get your free API key.</div>
   </div>
 
+  <div class="status-row" id="statusRow" style="display:none">
+    <span id="statusText"></span>
+  </div>
+
   <div class="actions">
     <button class="btn-primary" id="saveBtn" onclick="saveConfig()">Save &amp; Start</button>
+    <button class="btn-secondary" onclick="window.location.href='/'">Back to App</button>
   </div>
 </div>
 
 <script>
 var errorMsg = document.getElementById('errorMsg');
 var successMsg = document.getElementById('successMsg');
+var statusRow = document.getElementById('statusRow');
+var statusText = document.getElementById('statusText');
 
 document.getElementById('heliusKey').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') saveConfig();
 });
+
+async function loadStatus() {
+  try {
+    var resp = await fetch('/api/config/status');
+    var data = await resp.json();
+    statusRow.style.display = 'flex';
+    if (data.configured) {
+      statusRow.className = 'status-row configured';
+      statusText.textContent = 'API key is configured. Change it below if needed.';
+      var btn = document.getElementById('saveBtn');
+      btn.textContent = 'Save &amp; Update';
+    } else {
+      statusRow.className = 'status-row not-configured';
+      statusText.textContent = 'No API key configured. Enter your Helius RPC URL to get started.';
+    }
+  } catch(e) {
+    statusRow.style.display = 'none';
+  }
+}
+
+loadStatus();
 
 async function saveConfig() {
   var key = document.getElementById('heliusKey').value.trim();
