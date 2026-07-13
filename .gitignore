@@ -1,0 +1,7 @@
+node_modules/
+dist/
+release/
+.env
+*.lnk
+*.bat
+make-icon.js

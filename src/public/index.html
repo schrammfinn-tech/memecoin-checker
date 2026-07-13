@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memecoin Checker</title>
+<style>
+:root{--bg:#06060e;--glass:rgba(16,16,30,0.78);--border:rgba(255,255,255,0.06);--text:#e2e4f0;--muted:#72768a;--green:#a6e3a1;--red:#f38ba8;--yellow:#f9e2af;--blue:#89b4fa;--purple:#cba6f7;--cyan:#89dceb;--orange:#fab387}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;min-height:100vh;background-image:radial-gradient(ellipse at 30% 20%,rgba(137,220,235,0.04) 0%,transparent 60%),radial-gradient(ellipse at 70% 80%,rgba(166,227,161,0.03) 0%,transparent 60%)}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:4px}
+.top{background:var(--glass);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid var(--border);padding:16px 32px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}
+.top h1{font-size:17px;font-weight:800;color:var(--cyan);letter-spacing:0.5px;white-space:nowrap}
+.top input{flex:1;max-width:500px;background:rgba(255,255,255,0.04);color:var(--text);border:1px solid var(--border);padding:11px 16px;font-size:13px;border-radius:8px;outline:none;transition:all 0.2s;font-family:inherit}
+.top input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(137,220,235,0.08)}
+.top input::placeholder{color:var(--muted)}
+.top button{background:linear-gradient(135deg,var(--cyan),#6cccd8);color:#06060e;border:none;padding:11px 22px;font-size:13px;font-weight:700;border-radius:8px;cursor:pointer;transition:all 0.2s;font-family:inherit;white-space:nowrap;letter-spacing:0.3px}
+.top button:hover{box-shadow:0 4px 18px rgba(137,220,235,0.25);transform:translateY(-1px)}
+.top button:disabled{opacity:0.35;cursor:not-allowed;transform:none;box-shadow:none}
+.content{padding:24px 32px 60px;max-width:1200px;margin:0 auto}
+.content.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center}
+.content.empty h2{font-size:28px;font-weight:800;color:var(--cyan);margin-bottom:8px}
+.content.empty p{color:var(--muted);font-size:14px;max-width:460px;line-height:1.7}
+.loading{text-align:center;padding:80px 20px;color:var(--muted)}
+.spinner{display:inline-block;width:28px;height:28px;border:3px solid rgba(255,255,255,0.06);border-top-color:var(--cyan);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.risk-hero{display:flex;align-items:center;gap:24px;margin-bottom:20px;flex-wrap:wrap}
+.risk-level{font-size:48px;font-weight:900;line-height:1;letter-spacing:-2px}
+.risk-LOW{color:var(--green)}.risk-MEDIUM{color:var(--yellow)}.risk-HIGH{color:var(--red)}.risk-CRITICAL{color:#ff4444;text-shadow:0 0 30px rgba(255,68,68,0.2)}
+
+.glass{background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px}
+.glass h3{font-size:12px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:14px;font-weight:700}
+.glass.clickable{cursor:pointer;transition:all 0.2s}
+.glass.clickable:hover{border-color:rgba(137,220,235,0.2);transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,0.3)}
+.glass.accent-green{border-left:3px solid var(--green)}
+.glass.accent-yellow{border-left:3px solid var(--yellow)}
+.glass.accent-red{border-left:3px solid var(--red)}
+.glass.accent-cyan{border-left:3px solid var(--cyan)}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+
+.badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700}
+.bd-red{background:rgba(243,139,168,0.1);color:var(--red);border:1px solid rgba(243,139,168,0.2)}
+.bd-yellow{background:rgba(249,226,175,0.1);color:var(--yellow);border:1px solid rgba(249,226,175,0.2)}
+.bd-green{background:rgba(166,227,161,0.1);color:var(--green);border:1px solid rgba(166,227,161,0.2)}
+.bd-cyan{background:rgba(137,220,235,0.08);color:var(--cyan);border:1px solid rgba(137,220,235,0.15)}
+.bd-purple{background:rgba(203,166,247,0.1);color:var(--purple)}
+.bd-orange{background:rgba(250,179,135,0.1);color:var(--orange)}
+
+.stat-row{display:flex;justify-content:space-between;padding:7px 0;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.03)}
+.stat-row:last-child{border-bottom:none}
+.stat-label{color:var(--muted)}.stat-value{font-weight:600}
+.stg{color:var(--green)}.str{color:var(--red)}.sty{color:var(--yellow)}.stb{color:var(--blue)}
+
+.table{width:100%;font-size:12px;border-collapse:collapse}
+.table th{text-align:left;color:var(--muted);text-transform:uppercase;letter-spacing:1px;padding:9px 12px;font-size:10px;border-bottom:1px solid var(--border);font-weight:700}
+.table td{padding:7px 12px;border-bottom:1px solid rgba(255,255,255,0.02)}
+.table tr:hover{background:rgba(255,255,255,0.015)}
+.mono{font-family:'SF Mono','JetBrains Mono',monospace;color:var(--yellow);font-size:11px}
+
+.price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.price-stat{background:rgba(255,255,255,0.02);border-radius:8px;padding:14px}
+.price-stat .lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px}
+.price-stat .val{font-size:18px;font-weight:800}
+
+.sb{display:flex;align-items:center;gap:10px;margin:5px 0}
+.sb-lbl{width:130px;font-size:11px;color:var(--muted);text-align:right;flex-shrink:0}
+.sb-trk{flex:1;height:8px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden}
+.sb-fill{height:100%;border-radius:4px;transition:width 0.8s ease;box-shadow:0 0 8px currentColor}
+.sb-val{width:38px;font-size:12px;font-weight:800;text-align:right;flex-shrink:0}
+
+.redflag{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.03);font-size:12px}
+.social-item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.03)}
+.si-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.si-tw{background:rgba(29,155,240,0.12);color:#1d9bf0}.si-tg{background:rgba(42,171,238,0.1);color:#2aabee}.si-web{background:rgba(166,227,161,0.1);color:var(--green)}
+.si-stats{flex:1;font-size:11px}.si-stats .big{font-size:17px;font-weight:700}
+
+.viz-canvas{border-radius:10px;width:100%;height:420px;margin-bottom:14px}
+.viz-wrap{position:relative;overflow:hidden;border-radius:12px}
+.viz-tip{position:absolute;background:rgba(16,16,30,0.96);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:11px;pointer-events:none;display:none;z-index:10;max-width:260px}
+
+.refresh{background:rgba(137,220,235,0.08);color:var(--cyan);border:1px solid rgba(137,220,235,0.2);padding:9px 20px;font-size:12px;font-weight:600;border-radius:7px;cursor:pointer;transition:all 0.2s;font-family:inherit}
+.refresh:hover{background:rgba(137,220,235,0.14);border-color:var(--cyan);box-shadow:0 0 14px rgba(137,220,235,0.12)}
+.error{background:rgba(243,139,168,0.08);border:1px solid rgba(243,139,168,0.2);color:var(--red);padding:16px;border-radius:10px;font-size:13px}
+@media(max-width:700px){.top{padding:12px 16px}.content{padding:16px}.risk-level{font-size:32px}}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>MEMECOIN CHECKER</h1>
+  <input type="text" id="tokenInput" placeholder="Enter Solana token address..." />
+  <button id="analyzeBtn" onclick="analyze()">ANALYZE</button>
+  <button class="refresh" id="socialBtn" onclick="scanSocial()" style="display:none">SOCIAL</button>
+  <button class="refresh" id="sniperBtn" onclick="scanSnipers()" style="display:none">SNIPERS</button>
+</div>
+
+<div class="content empty" id="content">
+  <h2>Memecoin Checker</h2>
+  <p>Enter a Solana token address above to analyze holder concentration, wallet clusters, bundle detection, liquidity locks, developer history, and social media red flags.</p>
+</div>
+
+<script>
+var appData=null,currentToken='',priceData=null;
+
+document.getElementById('tokenInput').addEventListener('keydown',function(e){if(e.key==='Enter')analyze();});
+
+async function analyze(){
+  var addr=document.getElementById('tokenInput').value.trim();if(!addr)return;
+  currentToken=addr;appData=null;priceData=null;
+  var c=document.getElementById('content');c.className='content';
+  c.innerHTML='<div class="loading"><div class="spinner"></div><br><br>Running full analysis...<br><span style="font-size:12px;color:var(--muted);">Scanning holders, transfers, bundles, LP, dev history...</span></div>';
+  var btn=document.getElementById('analyzeBtn');btn.disabled=true;
+
+  try{
+    var resp=await fetch('/api/check/'+encodeURIComponent(addr));
+    if(!resp.ok){var e=await resp.json();throw new Error(e.error);}
+    appData=await resp.json();
+    document.getElementById('socialBtn').style.display='inline-block';
+    document.getElementById('sniperBtn').style.display='inline-block';
+    renderAll();
+  }catch(err){c.innerHTML='<div class="error">'+err.message+'</div>';}
+  finally{btn.disabled=false;}
+}
+
+function renderAll(){
+  try{
+  var d=appData,sb=d.scoreBreakdown||{},h=d.holders||[];
+  var wh=h.filter(function(x){return!x.isContract&&!x.isDex;});
+  var t10s=wh.slice(0,10).reduce(function(s,x){return s+(x.share||0);},0);
+  var lp=d.liquidityLock,dev=d.devProfile,bndl=d.bundleDetection,cl=d.clusters||[],social=d.socialResult;
+  var dh=h.filter(function(x){return x.isDex;}),ch=h.filter(function(x){return x.isContract&&!x.isDex;});
+  var riskC='risk-'+d.overallRisk;
+
+  var cards='';
+  if(lp)cards+='<div class="glass clickable accent-'+(lp.risk==='SAFE'?'green':lp.risk==='MODERATE'?'yellow':'red')+'" onclick="scrollToSection(\'liquidity\')"><h3>Liquidity Lock</h3><div style="font-size:24px;font-weight:800;'+(lp.risk==='SAFE'?'color:var(--green)':lp.risk==='MODERATE'?'color:var(--yellow)':'color:var(--red)')+';">'+lp.status+'</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">'+(lp.burnedPercent*100).toFixed(0)+'% burned &bull; Dev LP: '+(lp.deployerHoldsLP?'YES':'No')+'</div></div>';
+  if(dev)cards+='<div class="glass clickable accent-'+(dev.isKnownRugger?'red':dev.rugRate>0.3?'yellow':'green')+'" onclick="scrollToSection(\'developer\')"><h3>Developer</h3><div style="font-size:24px;font-weight:800;'+(dev.isKnownRugger?'color:#ff4444':dev.rugRate>0.3?'color:var(--yellow)':'color:var(--green)')+';">'+(dev.isKnownRugger?'KNOWN RUGGER':dev.rugRate>0.3?'Suspicious':'Clean')+'</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">'+dev.totalTokensLaunched+' tokens &bull; '+(dev.rugRate*100).toFixed(0)+'% rug rate</div></div>';
+  if(bndl)cards+='<div class="glass clickable accent-'+(bndl.isBundled?'red':'green')+'" onclick="scrollToSection(\'bundles\')"><h3>Bundles</h3><div style="font-size:24px;font-weight:800;'+(bndl.isBundled?'color:var(--red)':'color:var(--green)')+';">'+(bndl.isBundled?'BUNDLED':'Clean')+'</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">'+bndl.bundleGroups.length+' groups &bull; '+pct(bndl.totalBundleShare)+' supply</div></div>';
+  cards+='<div class="glass clickable accent-'+(t10s>0.5?'red':t10s>0.3?'yellow':'green')+'" onclick="scrollToSection(\'holders\')"><h3>Holders</h3><div style="font-size:24px;font-weight:800;">'+pct(t10s)+'</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">Top 10 wallets &bull; '+wh.length+' total</div></div>';
+  if(cl.length>0)cards+='<div class="glass clickable accent-yellow" onclick="scrollToSection(\'clusters\')"><h3>Clusters</h3><div style="font-size:24px;font-weight:800;color:var(--yellow);">'+cl.length+'</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">Suspicious wallet groups</div></div>';
+  if(social)cards+='<div class="glass clickable accent-'+(social.redFlags.length>=3?'red':social.redFlags.length>0?'yellow':'green')+'" onclick="scrollToSection(\'social\')"><h3>Social Media</h3><div style="font-size:24px;font-weight:800;'+(social.redFlags.length>=3?'color:var(--red)':social.redFlags.length>0?'color:var(--yellow)':'color:var(--green)')+';">'+social.redFlags.length+' red flags</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">'+(social.twitter?social.twitter.handle:'')+'</div></div>';
+
+  var html='';
+
+  // Hero
+  html+='<div class="risk-hero"><div class="risk-level '+riskC+'">'+d.overallRisk+'</div><div><span class="badge '+(d.overallRisk==='CRITICAL'?'bd-red':d.overallRisk==='HIGH'?'bd-red':d.overallRisk==='MEDIUM'?'bd-yellow':'bd-green')+'">'+d.overallRisk+' RISK</span><div style="margin-top:8px;font-size:13px;color:var(--muted);">Supply: <b style="color:var(--text);">'+fmtNum(d.totalSupply||0)+'</b> &bull; Gini: '+(d.scores?.giniIndex||0).toFixed(3)+' &bull; Nakamoto: '+(d.scores?.nakamotoCoefficient||0)+' wallets</div></div></div>';
+
+  // Price section
+  html+='<div id="priceArea"><div class="glass"><h3>Price Chart</h3><div style="text-align:center;padding:20px;color:var(--muted);"><div class="spinner" style="width:18px;height:18px;"></div> Loading...</div></div></div>';
+
+  // Risk bars
+  html+='<div class="glass"><h3>Risk Breakdown</h3>';
+  html+=sbar('Holder Concentration',sb.holderConcentration||0,25,sb.holderConcentration>15?'var(--red)':sb.holderConcentration>8?'var(--yellow)':'var(--green)');
+  html+=sbar('Wallet Clustering',sb.clusteringScore||0,20,sb.clusteringScore>12?'var(--red)':sb.clusteringScore>6?'var(--yellow)':'var(--green)');
+  html+=sbar('Bundle Detection',sb.bundleScore||0,20,sb.bundleScore>12?'var(--red)':sb.bundleScore>6?'var(--yellow)':'var(--green)');
+  html+=sbar('Liquidity Lock',sb.liquidityScore||0,15,sb.liquidityScore>10?'var(--red)':sb.liquidityScore>5?'var(--yellow)':'var(--green)');
+  html+=sbar('Dev Reputation',sb.devReputationScore||0,10,sb.devReputationScore>7?'var(--red)':sb.devReputationScore>3?'var(--yellow)':'var(--green)');
+  html+=sbar('Sniper Activity',sb.sniperScore||0,10,'var(--purple)');
+  html+='</div>';
+
+  // Dashboard cards
+  html+='<div class="grid2">'+cards+'</div>';
+
+  // LIQUIDITY section
+  html+='<div class="glass" id="section-liquidity"><h3>Liquidity Lock Analysis</h3>';
+  if(lp){
+    html+='<div class="stat-row"><span class="stat-label">Status</span><span class="stat-value '+(lp.status==='BURNED'?'stg':lp.status==='LOCKED'?'sty':'str')+'">'+lp.status+'</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Risk</span><span class="stat-value '+(lp.risk==='SAFE'?'stg':lp.risk==='MODERATE'?'sty':'str')+'">'+lp.risk+'</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">LP Mint</span><span class="stat-value mono">'+(lp.lpMint?lp.lpMint.slice(0,20)+'...':'N/A')+'</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Total LP Supply</span><span class="stat-value">'+fmtNum(lp.totalLP)+'</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Burned</span><span class="stat-value stg">'+pct(lp.burnedPercent)+'</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Locked</span><span class="stat-value">'+pct(lp.lockedPercent)+'</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Top LP Holder</span><span class="stat-value '+(lp.topLPHolderShare>0.5?'str':'sty')+'">'+pct(lp.topLPHolderShare)+'</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Dev Holds LP</span><span class="stat-value '+(lp.deployerHoldsLP?'str':'stg')+'">'+(lp.deployerHoldsLP?'YES - DANGER':'No')+'</span></div>';
+    if(lp.status==='NO_LP')html+='<div style="margin-top:12px;padding:12px;background:rgba(243,139,168,0.06);border-radius:8px;color:var(--red);font-size:13px;">This token has no detected liquidity pool. It may not be tradable or liquidity was pulled.</div>';
+    else if(lp.risk==='VERY_HIGH'||lp.risk==='HIGH')html+='<div style="margin-top:12px;padding:12px;background:rgba(243,139,168,0.06);border-radius:8px;color:var(--red);font-size:13px;">Liquidity is NOT locked or burned. The deployer can withdraw LP at any time (rug pull risk).</div>';
+  }else{html+='<div style="color:var(--muted);padding:12px 0;">No liquidity data available</div>';}
+  html+='</div>';
+
+  // DEVELOPER section
+  html+='<div class="glass" id="section-developer"><h3>Developer Profile</h3>';
+  if(dev){
+    html+='<div class="stat-row"><span class="stat-label">Deployer</span><span class="stat-value mono">'+dev.deployerAddress.slice(0,24)+'...'+dev.deployerAddress.slice(-8)+'</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Tokens Launched</span><span class="stat-value">'+dev.totalTokensLaunched+'</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Rug Rate</span><span class="stat-value '+(dev.rugRate>0.5?'str':dev.rugRate>0.2?'sty':'stg')+'">'+(dev.rugRate*100).toFixed(0)+'%</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Avg Lifespan</span><span class="stat-value">'+dev.avgTokenLifespanHours.toFixed(1)+'h</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Known Rugger</span><span class="stat-value '+(dev.isKnownRugger?'str':'stg')+'">'+(dev.isKnownRugger?'YES':'No')+'</span></div>';
+    if(dev.isKnownRugger)html+='<div style="margin-top:10px;padding:10px;background:rgba(255,68,68,0.08);border-radius:8px;color:#ff4444;font-size:13px;">DEVELOPER IS A KNOWN RUGGER - '+(dev.rugRate*100).toFixed(0)+'% rug rate on '+dev.totalTokensLaunched+' tokens</div>';
+    if(dev.recentTokens.length>0){html+='<div style="margin-top:12px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;">Recent Tokens</div>';dev.recentTokens.slice(0,8).forEach(function(t){html+='<div class="stat-row"><span class="stat-label mono">'+t.tokenAddress.slice(0,20)+'...</span><span class="stat-value">'+(t.isDead?'<span class="str">DEAD</span>':t.wasRugged?'<span class="str">RUGGED</span>':'<span class="stg">LIVE</span>')+' &bull; '+t.currentHolders+' holders</span></div>';});}
+  }else{html+='<div style="color:var(--muted);padding:12px 0;">Could not determine developer history</div>';}
+  html+='</div>';
+
+  // BUNDLES section
+  html+='<div class="glass" id="section-bundles"><h3>Bundle Detection</h3>';
+  if(bndl){
+    html+='<div class="stat-row"><span class="stat-label">Bundled Launch</span><span class="stat-value '+(bndl.isBundled?'str':'stg')+'">'+(bndl.isBundled?'YES':'No')+'</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Confidence</span><span class="stat-value '+(bndl.confidence==='HIGH'?'str':bndl.confidence==='MEDIUM'?'sty':'stg')+'">'+bndl.confidence+'</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Groups</span><span class="stat-value">'+bndl.bundleGroups.length+'</span></div>';
+    html+='<div class="stat-row"><span class="stat-label">Bundle Supply</span><span class="stat-value '+(bndl.totalBundleShare>0.15?'str':'sty')+'">'+pct(bndl.totalBundleShare)+'</span></div>';
+    if(bndl.bundleGroups.length>0){bndl.bundleGroups.slice(0,8).forEach(function(g,i){html+='<div style="margin-top:12px;padding:12px;background:rgba(255,255,255,0.02);border-radius:8px;"><div style="font-size:14px;color:var(--yellow);font-weight:600;margin-bottom:4px;">Group '+(i+1)+' &bull; '+g.wallets.length+' wallets &bull; Same block: '+(g.sameBlock?'<span class="str">Yes</span>':'No')+'</div><div style="font-size:11px;color:var(--muted);">'+fmtNum(g.tokenAmount)+' tokens &bull; '+new Date(g.buyTimestamp).toLocaleString()+'</div>'+g.wallets.slice(0,5).map(function(w){return'<div class="mono" style="font-size:10px;">'+w.slice(0,26)+'...'+w.slice(-6)+'</div>';}).join('')+(g.wallets.length>5?'<div style="font-size:10px;color:var(--muted);">+ '+(g.wallets.length-5)+' more</div>':'')+'</div>';});}
+  }else{html+='<div style="color:var(--muted);padding:12px 0;">No bundle data available</div>';}
+  html+='</div>';
+
+  // CLUSTERS section  
+  html+='<div class="glass" id="section-clusters"><h3>Wallet Clusters</h3>';
+  if(cl.length>0){
+    html+='<div class="viz-wrap"><canvas id="clusterCanvas" class="viz-canvas"></canvas><div class="viz-tip" id="vizTip"></div></div>';
+    var colors=['#89b4fa','#a6e3a1','#f9e2af','#f38ba8','#cba6f7','#89dceb','#fab387','#94e2d5'];
+    html+=cl.map(function(c,i){var wals=Array.from(c.wallets||[]);return'<div class="stat-row"><span><span style="color:'+colors[i%colors.length]+';font-weight:600;">Cluster '+(i+1)+'</span> &bull; '+c.wallets.size+' wallets</span><span class="stat-value stg">'+pct(c.totalShare||0)+'</span></div>';}).join('');
+  }else{html+='<div style="color:var(--muted);padding:12px 0;">No significant wallet clusters found</div>';}
+  html+='</div>';
+
+  // HOLDERS section
+  html+='<div class="glass" id="section-holders"><h3>Top Holders <span class="badge bd-green" style="font-size:10px;">'+wh.length+' Wallets</span> <span class="badge bd-red" style="font-size:10px;">'+dh.length+' DEX</span> <span class="badge bd-purple" style="font-size:10px;">'+ch.length+' Contracts</span></h3>';
+  html+='<div style="max-height:500px;overflow-y:auto;"><table class="table"><thead><tr><th>#</th><th>Owner</th><th>Share</th><th>Amount</th><th>Type</th></tr></thead><tbody>';
+  html+=h.slice(0,70).map(function(x,i){
+    var o=x.owner||'unknown',a=o.length>44?o.slice(0,16)+'...'+o.slice(-6):o.slice(0,18)+'...'+o.slice(-6);
+    var t=x.isDex?'<span class="badge bd-red" style="font-size:10px;">DEX</span>':x.isContract?'<span class="badge bd-purple" style="font-size:10px;">CON</span>':'<span class="badge bd-green" style="font-size:10px;">WAL</span>';
+    return'<tr><td>'+(i+1)+'</td><td class="mono">'+a+(x.knownLabel?' <span style="color:var(--muted);">'+x.knownLabel+'</span>':'')+'</td><td>'+pct(x.share||0)+'</td><td>'+fmtNum(x.amount||0)+'</td><td>'+t+'</td></tr>';
+  }).join('');
+  html+='</tbody></table></div></div>';
+
+  // Social section
+  html+='<div class="glass" id="section-social"><h3>Social Scanner</h3>';
+  if(social){
+    html+='<div id="socialResults">';
+    if(social.redFlags&&social.redFlags.length>0){
+      social.redFlags.forEach(function(rf){
+        var sev=rf.severity==='HIGH'?'bd-red':rf.severity==='MEDIUM'?'bd-yellow':'bd-green';
+        html+='<div class="redflag"><span style="color:var(--red);font-size:15px;">&#9888;</span><div><span class="badge '+sev+'">'+rf.severity+'</span> '+rf.description+'</div></div>';
+      });
+    }
+    if(social.twitter){var t=social.twitter;html+='<div class="social-item"><div class="si-icon si-tw">&#120143;</div><div class="si-stats"><div class="big">'+(t.followers||0).toLocaleString()+'</div><div>Followers &bull; '+(t.tweetCount||0).toLocaleString()+' tweets</div></div><div style="font-size:11px;color:var(--muted);">Engagement: '+(t.recentEngagement.engagementRate*100).toFixed(3)+'% &bull; '+(t.isSuspicious?'<span class="str">SUSPICIOUS</span>':'<span class="stg">OK</span>')+(t.suspicionReasons.length>0?'<br>'+t.suspicionReasons.join(" - "):'')+'</div></div>';}
+    if(social.telegram){var tg=social.telegram;html+='<div class="social-item"><div class="si-icon si-tg">&#9993;</div><div class="si-stats"><div class="big">'+(tg.members||0).toLocaleString()+'</div><div>Members &bull; '+tg.online+' online</div></div><div style="font-size:11px;color:var(--muted);">'+(tg.isSuspicious?'<span class="str">SUSPICIOUS</span>':'<span class="stg">OK</span>')+'</div></div>';}
+    if(social.website)html+='<div class="social-item"><div class="si-icon si-web">&#127760;</div><div class="si-stats"><div class="big" style="font-size:14px;">'+social.website+'</div><div>Website</div></div></div>';
+    if(!social.twitter&&!social.telegram&&!social.website)html+='<div style="color:var(--muted);padding:8px 0;font-size:13px;">No social links found</div>';
+    html+='</div>';
+  }else{
+    html+='<div id="socialResults"><div style="color:var(--muted);padding:8px 0;font-size:13px;">Social scan failed or no data available</div></div>';
+  }
+  html+='</div>';
+  html+='<div class="glass" id="section-snipers"><h3>Sniper Detection</h3><div id="sniperResults"><div style="color:var(--muted);padding:8px 0;font-size:13px;">Click the SNIPERS button above to scan for bot/sniper activity.</div></div></div>';
+
+  document.getElementById('content').innerHTML=html;
+  setTimeout(function(){if(cl.length>0)drawViz(wh,h);},300);
+  loadPrice();
+  }catch(e){document.getElementById('content').innerHTML='<div class="error">Render error: '+e.message+'</div>';}
+}
+
+function scrollToSection(id){
+  var el=document.getElementById('section-'+id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function sbar(label,val,max,color){
+  var pct=Math.min(100,Math.max(0,val/max*100));
+  return'<div class="sb"><span class="sb-lbl">'+label+'</span><div class="sb-trk"><div class="sb-fill" style="width:'+pct+'%;background:'+color+';"></div></div><span class="sb-val" style="color:'+color+';">'+val+'/'+max+'</span></div>';
+}
+function fmtNum(n){if(!n)return'0';if(n>=1e9)return(n/1e9).toFixed(2)+'B';if(n>=1e6)return(n/1e6).toFixed(2)+'M';if(n>=1e3)return(n/1e3).toFixed(2)+'K';if(n>=1)return n.toFixed(2);return n.toFixed(6);}
+function pct(v){return(v*100).toFixed(1)+'%';}
+
+// PRICE
+async function loadPrice(){
+  if(!currentToken)return;var el=document.getElementById('priceArea');if(!el)return;
+  try{
+    var resp=await fetch('/api/price/'+encodeURIComponent(currentToken));
+    if(!resp.ok)throw new Error('');
+    var p=await resp.json();
+    if(!p||!p.pairAddress){el.innerHTML='<div class="glass"><h3>Price Chart</h3><div style="text-align:center;padding:24px;color:var(--muted);">No DEX pair found</div></div>';return;}
+    var cs=p.priceChange24h>=0?'stg':'str';
+    el.innerHTML=
+      '<div class="glass"><h3>Price Chart &bull; '+p.dex.toUpperCase()+'</h3>'+
+      '<div class="price-grid">'+
+        '<div class="price-stat"><div class="lbl">Price</div><div class="val">$'+p.priceUsd.toFixed(p.priceUsd<0.01?8:p.priceUsd<1?6:4)+'</div></div>'+
+        '<div class="price-stat"><div class="lbl">24h Change</div><div class="val '+(p.priceChange24h>=0?'stg':'str')+'">'+(p.priceChange24h>=0?'+':'')+p.priceChange24h.toFixed(1)+'%</div></div>'+
+        '<div class="price-stat"><div class="lbl">Liquidity</div><div class="val">$'+fmtNum(p.liquidityUsd)+'</div></div>'+
+        '<div class="price-stat"><div class="lbl">Volume 24h</div><div class="val">$'+fmtNum(p.volume24h)+'</div></div>'+
+        '<div class="price-stat"><div class="lbl">Market Cap</div><div class="val">$'+fmtNum(p.marketCap)+'</div></div>'+
+        '<div class="price-stat"><div class="lbl">Transactions</div><div class="val" style="font-size:14px;"><span class="stg">'+p.txns24hBuys+'B</span>/<span class="str">'+p.txns24hSells+'S</span></div></div>'+
+      '</div>'+
+      '<iframe src="'+p.chartUrl+'" width="100%" height="420" style="border:none;border-radius:8px;" title="Chart"></iframe>'+
+      '</div>';
+  }catch(e){el.innerHTML='<div class="glass"><h3>Price Chart</h3><div style="text-align:center;padding:24px;color:var(--muted);">Could not load price data</div></div>';}
+}
+
+// SOCIAL
+async function scanSocial(){
+  if(!currentToken)return;var el=document.getElementById('socialResults');el.innerHTML='<div style="padding:8px 0;"><div class="spinner" style="width:16px;height:16px;"></div> Scanning...</div>';
+  try{
+    var resp=await fetch('/api/social/'+encodeURIComponent(currentToken));if(!resp.ok)throw new Error('');var d=await resp.json();var r='';
+    if(d.redFlags&&d.redFlags.length>0){d.redFlags.forEach(function(rf){var sev=rf.severity==='HIGH'?'bd-red':rf.severity==='MEDIUM'?'bd-yellow':'bd-green';r+='<div class="redflag"><span style="color:var(--red);font-size:15px;">&#9888;</span><div><span class="badge '+sev+'">'+rf.severity+'</span> '+rf.description+'</div></div>';});}
+    if(d.twitter){var t=d.twitter;r+='<div class="social-item"><div class="si-icon si-tw">&#120143;</div><div class="si-stats"><div class="big">'+(t.followers||0).toLocaleString()+'</div><div>Followers &bull; '+(t.tweetCount||0).toLocaleString()+' tweets</div></div><div style="font-size:11px;color:var(--muted);">Engagement: '+(t.recentEngagement.engagementRate*100).toFixed(2)+'% &bull; '+(t.isSuspicious?'<span class="str">SUSPICIOUS</span>':'<span class="stg">OK</span>')+'</div></div>';}
+    if(d.telegram){var tg=d.telegram;r+='<div class="social-item"><div class="si-icon si-tg">&#9993;</div><div class="si-stats"><div class="big">'+(tg.members||0).toLocaleString()+'</div><div>Members &bull; '+tg.online+' online</div></div><div style="font-size:11px;color:var(--muted);">'+(tg.isSuspicious?'<span class="str">SUSPICIOUS</span>':'<span class="stg">OK</span>')+'</div></div>';}
+    if(d.website)r+='<div class="social-item"><div class="si-icon si-web">&#127760;</div><div class="si-stats"><div class="big">'+d.website+'</div><div>Website</div></div></div>';
+    if(!d.twitter&&!d.telegram&&!d.website)r+='<div style="color:var(--muted);padding:8px 0;">No social links found</div>';
+    el.innerHTML=r;
+  }catch(e){el.innerHTML='<div class="error">Could not scan socials</div>';}
+}
+
+// SNIPERS
+async function scanSnipers(){
+  if(!currentToken)return;var el=document.getElementById('sniperResults');el.innerHTML='<div style="padding:8px 0;"><div class="spinner" style="width:16px;height:16px;"></div> Scanning...</div>';
+  try{
+    var resp=await fetch('/api/sniper/'+encodeURIComponent(currentToken));if(!resp.ok)throw new Error('');var snipers=await resp.json();
+    if(snipers.length>0){el.innerHTML=snipers.slice(0,15).map(function(s){var t=s.timeToBuyMs<1000?s.timeToBuyMs+'ms':(s.timeToBuyMs/1000).toFixed(1)+'s';return'<div class="stat-row"><span class="mono">'+s.address.slice(0,22)+'...'+s.address.slice(-6)+'</span><span style="color:var(--red);">bought in '+t+'</span><span style="color:var(--muted);">'+pct(s.share||0)+'</span></div>';}).join('');}
+    else{el.innerHTML='<div style="color:var(--green);padding:8px 0;">No snipers detected</div>';}
+  }catch(e){el.innerHTML='<div class="error">Scan failed</div>';}
+}
+
+// CLUSTER VIZ
+function drawViz(wh,holders){
+  var canvas=document.getElementById('clusterCanvas');if(!canvas)return;
+  var parent=canvas.parentElement;canvas.width=parent.clientWidth;canvas.height=420;
+  var ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height;
+  var clusters=appData.clusters||[];
+  var colors=['#89b4fa','#a6e3a1','#f9e2af','#f38ba8','#cba6f7','#89dceb','#fab387','#94e2d5'];
+  var cm={};
+  for(var i=0;i<clusters.length;i++){var ws=Array.from(clusters[i].wallets||[]);for(var j=0;j<ws.length;j++)cm[ws[j]]=i;}
+
+  var nodes=[],wh2=wh.slice(0,60);
+  for(var k=0;k<wh2.length;k++){var o=wh2[k].owner||'',s=wh2[k].share||0,ci=cm[o];nodes.push({id:o,share:s,amount:wh2[k].amount||0,cluster:ci!==undefined?ci:-1,label:wh2[k].knownLabel,x:0,y:0});}
+  if(nodes.length===0)return;
+
+  var maxS=Math.max.apply(null,nodes.map(function(n){return n.share||0;})),cx=W/2,cy=H/2;
+  var cp=[];for(var ci=0;ci<clusters.length;ci++){var a=(ci/Math.max(1,clusters.length))*Math.PI*2,r=Math.min(W,H)*0.28;cp.push({x:cx+Math.cos(a)*r,y:cy+Math.sin(a)*r});}
+  for(var ni=0;ni<nodes.length;ni++){
+    if(nodes[ni].cluster>=0&&nodes[ni].cluster<cp.length){var pos=cp[nodes[ni].cluster],spread=40+Math.min(wh.length,12)*5,oa=(ni*2.3)%(Math.PI*2);nodes[ni].x=pos.x+Math.cos(oa)*spread*(0.4+Math.random()*0.6);nodes[ni].y=pos.y+Math.sin(oa)*spread*(0.4+Math.random()*0.6);}
+    else{var ba=(ni/nodes.length)*Math.PI*2,br=Math.min(W,H)*0.3;nodes[ni].x=cx+Math.cos(ba)*br;nodes[ni].y=cy+Math.sin(ba)*br;}
+  }
+  for(var ei=0;ei<clusters.length;ei++){var cn=nodes.filter(function(n){return n.cluster===ei;});ctx.strokeStyle=colors[ei%colors.length]+'18';ctx.lineWidth=1;for(var e1=0;e1<cn.length;e1++)for(var e2=e1+1;e2<Math.min(cn.length,e1+1+Math.floor(cn.length/2));e2++){ctx.beginPath();ctx.moveTo(cn[e1].x,cn[e1].y);ctx.lineTo(cn[e2].x,cn[e2].y);ctx.stroke();}}
+  for(var di=0;di<nodes.length;di++){var n=nodes[di],nr=5+(n.share/Math.max(0.01,maxS))*24;nr=Math.max(4,Math.min(nr,34));var color=n.cluster>=0?colors[n.cluster%colors.length]:'#72768a';ctx.beginPath();ctx.arc(n.x,n.y,nr,0,Math.PI*2);ctx.fillStyle=color+'22';ctx.fill();ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke();if(n.share>0.008&&nr>9){ctx.fillStyle='#e2e4f0';ctx.font='bold 10px Inter,sans-serif';ctx.textAlign='center';ctx.fillText(pct(n.share),n.x,n.y+4);}}
+  var tip=document.getElementById('vizTip');canvas.onmousemove=function(e){var rect=canvas.getBoundingClientRect(),mx=e.clientX-rect.left,my=e.clientY-rect.top,found=null;for(var hi=nodes.length-1;hi>=0;hi--){var nd=nodes[hi],ndr=5+(nd.share/Math.max(0.01,maxS))*24,dx=mx-nd.x,dy=my-nd.y;if(dx*dx+dy*dy<ndr*ndr+35){found=nd;break;}}if(found){tip.style.display='block';tip.style.left=(mx+14)+'px';tip.style.top=(my-18)+'px';tip.innerHTML='<div style="color:var(--yellow);font-size:12px;">'+found.id.slice(0,22)+'...'+found.id.slice(-6)+'</div><div style="color:var(--text);margin-top:2px;">Share: '+pct(found.share)+' &bull; '+fmtNum(found.amount)+'</div>'+(found.cluster>=0?'<div style="color:'+colors[found.cluster%colors.length]+';margin-top:2px;">Cluster '+(found.cluster+1)+'</div>':'')+(found.label?'<div style="color:var(--muted);font-size:10px;">'+found.label+'</div>':'');}else{tip.style.display='none';}};canvas.onmouseleave=function(){tip.style.display='none';};
+}
+</script>
+</body>
+</html>
