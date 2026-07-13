@@ -1,13 +1,13 @@
 {
-  "name": "memecoin-checker",
-  "version": "1.0.0",
-  "description": "On-chain analysis tool for Solana memecoins — holder clustering, bundle detection, liquidity locks, dev history tracking, social scanner, and risk scoring",
+  "name": "decipher",
+  "version": "1.0.2",
+  "description": "DECIPHER — On-chain analysis tool for Solana memecoins: holder clustering, bundle detection, liquidity locks, dev history tracking, social scanner, and risk scoring",
   "main": "dist/electron/main.js",
-  "author": "Memecoin Checker",
+  "author": "DECIPHER",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/schrammfinn-tech/memecoin-checker"
+    "url": "https://github.com/schrammfinn-tech/decipher"
   },
   "keywords": [
     "solana",
@@ -33,8 +33,8 @@
     "dist:linux": "npm run build && electron-builder --linux"
   },
   "build": {
-    "appId": "com.memecoin.checker",
-    "productName": "Memecoin Checker",
+    "appId": "com.decipher.app",
+    "productName": "DECIPHER",
     "npmRebuild": false,
     "files": [
       "dist/**/*",

@@ -1,4 +1,4 @@
-# Memecoin Checker
+# DECIPHER
 
 On-chain analysis tool for Solana memecoins. Detect bundles, cluster wallets, check liquidity locks, scan developer history, and spot red flags before you trade.
 
@@ -19,8 +19,8 @@ On-chain analysis tool for Solana memecoins. Detect bundles, cluster wallets, ch
 ## Quick Start
 
 ```bash
-git clone https://github.com/schrammfinn-tech/memecoin-checker.git
-cd memecoin-checker
+git clone https://github.com/schrammfinn-tech/decipher.git
+cd decipher
 npm install
 cp .env.example .env
 ```

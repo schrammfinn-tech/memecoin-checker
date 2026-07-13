@@ -63,7 +63,7 @@ function createWindow(port: number) {
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    title: "Memecoin Checker",
+    title: "DECIPHER",
     backgroundColor: "#0a0a0f",
     show: false,
     fullscreenable: true,
