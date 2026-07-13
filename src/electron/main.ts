@@ -59,6 +59,7 @@ function createWindow(port: number) {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      webSecurity: false,
     },
     icon: path.join(__dirname, "..", "public", "icon.png"),
   });
