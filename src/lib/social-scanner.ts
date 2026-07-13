@@ -213,7 +213,7 @@ async function findMakerTwitter(tokenName: string, deployerAddress: string): Pro
     for (const base of ["https://nitter.privacydev.net", "https://nitter.poast.org"]) {
       try {
         const { data } = await axios.get(`${base}/search?f=tweets&q=${query}`, {
-          timeout: 5000,
+          timeout: 3000,
           headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" },
         });
         const html = data as string;
@@ -229,7 +229,7 @@ async function analyzeTwitter(handle: string): Promise<TwitterAnalysis | null> {
   for (const base of NITTER_INSTANCES) {
     try {
       const { data } = await axios.get(`${base}/${handle}`, {
-        timeout: 6000,
+        timeout: 4000,
         headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "text/html" },
       });
       const html = data as string;
@@ -280,7 +280,7 @@ async function analyzeTwitter(handle: string): Promise<TwitterAnalysis | null> {
 async function analyzeTelegram(handle: string): Promise<TelegramAnalysis | null> {
   try {
     const { data } = await axios.get(`https://t.me/${handle}`, {
-      timeout: 6000,
+      timeout: 4000,
       headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "text/html" },
     });
     const html = data as string;

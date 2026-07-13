@@ -29,11 +29,15 @@ apiRouter.get("/check/:tokenAddress", async (req: Request, res: Response) => {
     const { tokenAddress } = req.params;
     const helius = getHelius();
     const rpcUrl = getRpc();
-    const result = await comprehensiveAnalyze(tokenAddress, helius, rpcUrl);
+    const timeoutMs = parseInt(req.query.timeout as string) || 15000;
+    const result = await Promise.race([
+      comprehensiveAnalyze(tokenAddress, helius, rpcUrl),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Analysis timed out — partial results may be available")), timeoutMs)),
+    ]);
     const buyTiming = assessBuyTiming(result);
     res.json({ ...result, buyTiming });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message || "Analysis failed" });
   }
 });
 

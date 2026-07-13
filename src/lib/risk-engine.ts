@@ -44,62 +44,42 @@ export async function comprehensiveAnalyze(
 
   const botResult = detectBots(holders, totalSupply);
 
-  // Run heavy RPC features sequentially to avoid rate limits
-  let clustersRaw: any = { status: "rejected", reason: "skipped" };
-  let bundleResult: any = { status: "rejected", reason: "skipped" };
-  let devProfile: any = { status: "rejected", reason: "skipped" };
-  let liquidityResult: any = { status: "rejected", reason: "skipped" };
-  let socialResult: any = { status: "rejected", reason: "skipped" };
-
-  // 1. First do light operations
-  try {
-    socialResult = await Promise.allSettled([scanSocials(tokenAddress)]).then(r => r[0]);
-  } catch(e) { /* skip */ }
-
-  // 2. Then clustering (light)
-  try {
-    const { edges, nodeShares } = await buildTransferGraph(connection, tokenAddress, 100);
-    const clustersFound = findClusters(edges, nodeShares);
-    clustersRaw = { status: "fulfilled", value: computeClusterShare(clustersFound, holders, totalSupply) };
-  } catch(e) { /* skip */ }
-
-  // 3. Bundle detection
-  try {
-    const b = await detectBundledLaunch(connection, tokenAddress, totalSupply);
-    bundleResult = { status: "fulfilled", value: b };
-  } catch(e) { /* skip */ }
-
-  // 4. Dev profile
-  try {
-    await new Promise(r => setTimeout(r, 300));
-    const d = await getDevProfile(connection, tokenAddress);
-    devProfile = { status: "fulfilled", value: d };
-    // Re-run social scan with deployer address if found
-    if (d?.deployerAddress && d.deployerAddress !== "unknown") {
-      try {
-        const s2 = await scanSocials(tokenAddress, d.deployerAddress);
-        socialResult = { status: "fulfilled", value: s2 };
-      } catch(e) { /* keep original */ }
-    }
-  } catch(e) { /* skip */ }
-
-  // 5. Liquidity
-  try {
-    await new Promise(r => setTimeout(r, 300));
+  // Run all independent operations in parallel
+  const socialPromise = scanSocials(tokenAddress).catch(() => null);
+  const clusterPromise = buildTransferGraph(connection, tokenAddress, 100)
+    .then(({ edges, nodeShares }) => {
+      const clustersFound = findClusters(edges, nodeShares);
+      return computeClusterShare(clustersFound, holders, totalSupply);
+    }).catch(() => null);
+  const bundlePromise = detectBundledLaunch(connection, tokenAddress, totalSupply).catch(() => null);
+  const devPromise = getDevProfile(connection, tokenAddress).catch(() => null);
+  const liquidityPromise = (async () => {
     let deployer = "unknown";
     if (holders.length > 0) {
       const wallet = holders.find((h) => h.owner !== "unknown" && !h.isDex && !h.isContract);
       deployer = wallet?.owner ?? "unknown";
     }
-    const l = await analyzeLiquidityLock(connection, tokenAddress, deployer);
-    liquidityResult = { status: "fulfilled", value: l };
-  } catch(e) { /* skip */ }
+    return analyzeLiquidityLock(connection, tokenAddress, deployer).catch(() => null);
+  })();
 
-  const clusters: WalletCluster[] = clustersRaw.status === "fulfilled" ? clustersRaw.value : [];
-  const bundleResultVal = bundleResult.status === "fulfilled" ? bundleResult.value : null;
-  const devProfileVal = devProfile.status === "fulfilled" ? devProfile.value : null;
-  const liquidityResultVal = liquidityResult.status === "fulfilled" ? liquidityResult.value : null;
-  const socialResultVal: SocialResult | null = socialResult.status === "fulfilled" ? socialResult.value : null;
+  const [socialRaw, clustersRaw, bundleRaw, devRaw, liquidityRaw] =
+    await Promise.allSettled([socialPromise, clusterPromise, bundlePromise, devPromise, liquidityPromise]);
+
+  let socialResult: any = socialRaw.status === "fulfilled" ? socialRaw.value : null;
+  let bundleResultVal = bundleRaw.status === "fulfilled" ? bundleRaw.value : null;
+
+  // Re-run social scan with deployer address if dev profile found it
+  let devProfileVal = devRaw.status === "fulfilled" ? devRaw.value : null;
+  if (devProfileVal?.deployerAddress && devProfileVal.deployerAddress !== "unknown") {
+    try {
+      const s2 = await scanSocials(tokenAddress, devProfileVal.deployerAddress);
+      if (s2) socialResult = s2;
+    } catch(e) { /* keep original */ }
+  }
+
+  const clusters: WalletCluster[] = clustersRaw.status === "fulfilled" ? (clustersRaw.value || []) : [];
+  const liquidityResultVal = liquidityRaw.status === "fulfilled" ? liquidityRaw.value : null;
+  const socialResultVal: SocialResult | null = socialResult;
 
   const walletHolders = holders.filter((h) => !h.isContract && !h.isDex);
   const totalHolderShare = walletHolders.reduce((s, h) => s + h.share, 0);
