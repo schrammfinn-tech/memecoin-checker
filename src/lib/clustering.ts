@@ -20,7 +20,7 @@ export interface WalletCluster {
 export async function buildTransferGraph(
   connection: Connection,
   tokenAddress: string,
-  maxTx = 200
+  maxTx = 100
 ): Promise<{ edges: TransferEdge[]; nodeShares: Map<string, number> }> {
   const mint = new PublicKey(tokenAddress);
   const edges = new Map<string, TransferEdge>();
@@ -138,32 +138,44 @@ export function findClusters(
 
   return clusters
     .map((c) => {
-      let totalAmount = 0;
-      let totalShare = 0;
-      for (const w of c.wallets) {
-        totalAmount += nodeShares.get(w) ?? 0;
-      }
       const n = c.wallets.size;
       const maxEdges = (n * (n - 1)) / 2;
       const density = maxEdges > 0 ? c.edges.length / maxEdges : 0;
 
       return {
         wallets: c.wallets,
-        totalAmount,
+        totalAmount: 0,
         totalShare: 0,
         edges: c.edges,
         density,
       };
     })
-    .sort((a, b) => b.totalAmount - a.totalAmount);
+    .sort((a, b) => b.wallets.size - a.wallets.size);
 }
 
 export function computeClusterShare(
   clusters: WalletCluster[],
+  holders: { owner: string; share: number; amount: number }[],
   totalSupply: number
 ): WalletCluster[] {
-  for (const c of clusters) {
-    c.totalShare = totalSupply > 0 ? c.totalAmount / totalSupply : 0;
+  const shareMap = new Map<string, { share: number; amount: number }>();
+  for (const h of holders) {
+    shareMap.set(h.owner, { share: h.share, amount: h.amount });
   }
-  return clusters;
+
+  for (const c of clusters) {
+    let totalAmount = 0;
+    let totalShare = 0;
+    for (const w of c.wallets) {
+      const h = shareMap.get(w);
+      if (h) {
+        totalAmount += h.amount;
+        totalShare += h.share;
+      }
+    }
+    c.totalAmount = totalAmount;
+    c.totalShare = totalShare;
+  }
+
+  return clusters.sort((a, b) => b.totalShare - a.totalShare);
 }

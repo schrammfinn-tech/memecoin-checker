@@ -58,9 +58,9 @@ export async function comprehensiveAnalyze(
 
   // 2. Then clustering (light)
   try {
-    const { edges, nodeShares } = await buildTransferGraph(connection, tokenAddress, 50);
+    const { edges, nodeShares } = await buildTransferGraph(connection, tokenAddress, 100);
     const clustersFound = findClusters(edges, nodeShares);
-    clustersRaw = { status: "fulfilled", value: computeClusterShare(clustersFound, totalSupply) };
+    clustersRaw = { status: "fulfilled", value: computeClusterShare(clustersFound, holders, totalSupply) };
   } catch(e) { /* skip */ }
 
   // 3. Bundle detection
