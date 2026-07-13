@@ -62,6 +62,16 @@ apiRouter.get("/social/:tokenAddress", async (req: Request, res: Response) => {
   }
 });
 
+apiRouter.get("/price/:tokenAddress", async (req: Request, res: Response) => {
+  try {
+    const { tokenAddress } = req.params;
+    const result = await fetchPriceData(tokenAddress);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 apiRouter.get("/whales/:tokenAddress", async (req: Request, res: Response) => {
   try {
     const { tokenAddress } = req.params;
