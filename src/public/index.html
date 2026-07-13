@@ -146,7 +146,7 @@ function render(){
 
   // CARDS
   html+='<div class="cards">';
-  if(lp)html+='<div class="card c'+(lp.risk==='SAFE'?'l':lp.risk==='MODERATE'?'y':'r')+'" onclick="document.getElementById(\'sec-lp\').scrollIntoView({behavior:\'smooth\'})"><h4>Liquidity</h4><div class="val '+(lp.risk==='SAFE'?'g':lp.risk==='MODERATE'?'y':'r')+'">'+lp.status+'</div><div class="sub">'+(lp.burnedPercent*100).toFixed(0)+'% burned &bull; '+(lp.liquidityUsd>0?'$'+fmt(lp.liquidityUsd)+' TVL':'Dev LP: '+(lp.deployerHoldsLP?'YES':'No'))+'</div></div>';
+  if(lp)html+='<div class="card c'+(lp.risk==='SAFE'?'l':lp.risk==='MODERATE'?'y':'r')+'" onclick="document.getElementById(\'sec-lp\').scrollIntoView({behavior:\'smooth\'})"><h4>Liquidity</h4><div class="val '+(lp.risk==='SAFE'?'g':lp.risk==='MODERATE'?'y':'r')+'">'+lp.status+'</div><div class="sub">'+(lp.liquidityUsd>0?'$'+fmt(lp.liquidityUsd)+' TVL &bull; ':'')+(lp.dexName||'Unknown DEX')+'</div></div>';
   if(dev)html+='<div class="card c'+(dev.isKnownRugger?'r':dev.rugRate>0.3?'y':'l')+'" onclick="document.getElementById(\'sec-dev\').scrollIntoView({behavior:\'smooth\'})"><h4>Developer</h4><div class="val '+(dev.isKnownRugger?'r':dev.rugRate>0.3?'y':'g')+'">'+(dev.isKnownRugger?'RUGGER':dev.rugRate>0.3?'Suspicious':'Clean')+'</div><div class="sub">'+dev.totalTokensLaunched+' tokens &bull; '+(dev.rugRate*100).toFixed(0)+'% rug rate</div></div>';
   if(bndl)html+='<div class="card c'+(bndl.isBundled?'r':'l')+'" onclick="document.getElementById(\'sec-bundle\').scrollIntoView({behavior:\'smooth\'})"><h4>Bundles</h4><div class="val '+(bndl.isBundled?'r':'g')+'">'+(bndl.isBundled?'BUNDLED':'Clean')+'</div><div class="sub">'+bndl.bundleGroups.length+' groups &bull; '+p(bndl.totalBundleShare)+'</div></div>';
   html+='<div class="card c'+(t10>0.5?'r':t10>0.3?'y':'l')+'" onclick="document.getElementById(\'sec-holders\').scrollIntoView({behavior:\'smooth\'})"><h4>Holders</h4><div class="val">'+p(t10)+'</div><div class="sub">Top 10 wallets &bull; '+wh.length+' total wallets</div></div>';
@@ -160,12 +160,12 @@ function render(){
   if(lp){
     html+='<div class="stat-row"><span class="sl">Status</span><span class="sv '+(lp.status==='BURNED'?'g':lp.status==='LOCKED'?'y':'r')+'">'+lp.status+'</span></div>';
     html+='<div class="stat-row"><span class="sl">Risk</span><span class="sv '+(lp.risk==='SAFE'?'g':lp.risk==='MODERATE'?'y':'r')+'">'+lp.risk+'</span></div>';
-    if(lp.liquidityUsd>0)html+='<div class="stat-row"><span class="sl">TVL</span><span class="sv b">$'+fmt(lp.liquidityUsd)+'</span></div>';
-    html+='<div class="stat-row"><span class="sl">Burned</span><span class="sv g">'+p(lp.burnedPercent)+'</span></div>';
-    html+='<div class="stat-row"><span class="sl">Top LP Holder</span><span class="sv '+(lp.topLPHolderShare>0.5?'r':'y')+'">'+p(lp.topLPHolderShare)+'</span></div>';
-    html+='<div class="stat-row"><span class="sl">Dev Holds LP</span><span class="sv '+(lp.deployerHoldsLP?'r':'g')+'">'+(lp.deployerHoldsLP?'YES - DANGER':'No')+'</span></div>';
-    if(lp.pairAddress)html+='<div class="stat-row"><span class="sl">Pair</span><span class="sv mono">'+lp.pairAddress.slice(0,24)+'...</span></div>';
-    if(lp.status==='NO_LP'||lp.risk==='VERY_HIGH'||lp.risk==='HIGH')html+='<div style="margin-top:8px;padding:10px;background:rgba(243,139,168,0.06);border-radius:6px;color:var(--red);font-size:12px;">'+(lp.status==='NO_LP'?'No liquidity pool detected. Token may not be tradable.':'LP is not locked or burned. Deployer can pull liquidity at any time.')+'</div>';
+    html+='<div class="stat-row"><span class="sl">DEX</span><span class="sv b">'+(lp.dexName||'Unknown')+'</span></div>';
+    if(lp.liquidityUsd>0)html+='<div class="stat-row"><span class="sl">Total Value Locked</span><span class="sv">$'+fmt(lp.liquidityUsd)+'</span></div>';
+    if(lp.pairAddress)html+='<div class="stat-row"><span class="sl">Pair Address</span><span class="sv mono">'+lp.pairAddress.slice(0,24)+'...</span></div>';
+    html+='<div class="stat-row"><span class="sl">LP Burned</span><span class="sv '+(lp.burnedPercent>0.5?'g':'r')+'">'+(lp.burnedPercent*100).toFixed(0)+'%</span></div>';
+    if(lp.status==='NO_LP')html+='<div style="margin-top:8px;padding:10px;background:rgba(243,139,168,0.06);border-radius:6px;color:var(--red);font-size:12px;">No liquidity pool detected. Token may still be on bonding curve or not yet tradable.</div>';
+    else if(lp.risk==='VERY_HIGH'||lp.risk==='HIGH')html+='<div style="margin-top:8px;padding:10px;background:rgba(243,139,168,0.06);border-radius:6px;color:var(--red);font-size:12px;">Liquidity is NOT locked or burned — the deployer can withdraw LP at any time.</div>';
   }else html+='<div style="color:var(--muted);">No data</div>';
   html+='</div>';
 
