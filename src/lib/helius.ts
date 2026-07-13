@@ -62,17 +62,18 @@ export class HeliusClient {
         );
         this.lastCall = Date.now();
         if (data.error) {
-          if (data.error.code === 429) {
-            const backoff = Math.pow(2, attempt) * 1000;
+          const msg = data.error.message || "";
+          if (data.error.code === 429 || msg.includes("overloaded") || msg.includes("try again")) {
+            const backoff = Math.pow(2, attempt) * 1500;
             await new Promise((r) => setTimeout(r, backoff));
             continue;
           }
-          throw new Error(`RPC error: ${data.error.message}`);
+          throw new Error(`RPC error: ${msg}`);
         }
         return data.result;
       } catch (err: any) {
-        if (attempt < retries - 1 && (err.response?.status === 429 || err.message?.includes("429"))) {
-          const backoff = Math.pow(2, attempt) * 1000;
+        if (attempt < retries - 1) {
+          const backoff = Math.pow(2, attempt) * 1500;
           await new Promise((r) => setTimeout(r, backoff));
           continue;
         }
@@ -82,8 +83,36 @@ export class HeliusClient {
   }
 
   async getTokenLargestAccounts(mint: string): Promise<LargestAccount[]> {
-    const result = await this.rpcCall("getTokenLargestAccounts", [mint]);
-    return result.value;
+    try {
+      const result = await this.rpcCall("getTokenLargestAccounts", [mint]);
+      return result.value;
+    } catch (e) {
+      // Fallback: try getting holders from token program accounts
+      return this.getHoldersFromProgramAccounts(mint);
+    }
+  }
+
+  private async getHoldersFromProgramAccounts(mint: string): Promise<LargestAccount[]> {
+    const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+    const filters = [{ dataSize: 165 }, { memcmp: { offset: 0, bytes: mint } }];
+    const result = await this.rpcCall("getProgramAccounts", [TOKEN_PROGRAM, { filters, encoding: "jsonParsed" }]);
+
+    const accounts: LargestAccount[] = [];
+    for (const acc of result) {
+      const info = acc.account.data.parsed.info;
+      const uiAmount = info.tokenAmount.uiAmount;
+      if (uiAmount > 0) {
+        accounts.push({
+          address: acc.pubkey,
+          amount: info.tokenAmount.amount,
+          decimals: info.tokenAmount.decimals,
+          uiAmount: uiAmount,
+          uiAmountString: info.tokenAmount.uiAmountString,
+        });
+      }
+    }
+    accounts.sort((a, b) => b.uiAmount - a.uiAmount);
+    return accounts;
   }
 
   async getTokenSupply(mint: string): Promise<{ amount: string; decimals: number; uiAmount: number }> {

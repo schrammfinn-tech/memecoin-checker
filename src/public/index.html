@@ -280,7 +280,7 @@ async function loadPriceData(){
       for(var gi=0;gi<4;gi++){var gy=pad.t+(ch/3)*gi;ctx.beginPath();ctx.moveTo(pad.l,gy);ctx.lineTo(W-pad.r,gy);ctx.stroke();}
 
       // Line
-      ctx.beginPath();ctx.strokeStyle='var(--cyan)';ctx.lineWidth=2;
+      ctx.beginPath();ctx.strokeStyle='#89dceb';ctx.lineWidth=2;
       for(var pi=0;pi<prices.length;pi++){
         var px=pad.l+(pi/(prices.length-1))*cw;
         var py=pad.t+ch-((prices[pi]-min)/range)*ch;
@@ -295,7 +295,7 @@ async function loadPriceData(){
       ctx.fillStyle=grad;ctx.fill();
 
       // Labels
-      ctx.fillStyle='var(--muted)';ctx.font='9px Inter,sans-serif';
+      ctx.fillStyle='#72768a';ctx.font='9px Inter,sans-serif';
       ctx.fillText('24h ago',pad.l,H-3);ctx.fillText('Now',W-pad.r-25,H-3);
 
       // Price labels
