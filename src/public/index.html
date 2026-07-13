@@ -210,10 +210,14 @@ function render(){
   html+='<div class="glass" id="sec-social"><h3>Social Scanner</h3>';
   if(social){
     if(social.redFlags&&social.redFlags.length)social.redFlags.forEach(function(rf){var s=rf.severity==='HIGH'?'br':rf.severity==='MEDIUM'?'by':'bg';html+='<div class="stat-row"><span class="sl"><span class="badge '+s+'">'+rf.severity+'</span></span><span class="sv">'+rf.description+'</span></div>';});
-    if(social.twitter)html+='<div class="stat-row"><span class="sl">Twitter @'+social.twitter.handle+'</span><span class="sv">'+social.twitter.followers.toLocaleString()+' followers &bull; '+(social.twitter.recentEngagement.engagementRate*100).toFixed(2)+'% eng</span></div>';
-    if(social.telegram)html+='<div class="stat-row"><span class="sl">Telegram</span><span class="sv">'+social.telegram.members.toLocaleString()+' members &bull; '+social.telegram.online+' online</span></div>';
+
+    // Token Twitter
+    if(social.twitter)html+='<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);margin:10px 0 6px;">Token Twitter</div><div class="stat-row"><span class="sl">@'+social.twitter.handle+'</span><span class="sv">'+social.twitter.followers.toLocaleString()+' followers &bull; '+(social.twitter.recentEngagement.engagementRate*100).toFixed(2)+'% eng</span></div>';
+    // Maker Twitter
+    if(social.makerTwitter)html+='<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin:10px 0 6px;">Maker/Creator Twitter</div><div class="stat-row"><span class="sl">@'+social.makerTwitter.handle+'</span><span class="sv">'+social.makerTwitter.followers.toLocaleString()+' followers &bull; '+(social.makerTwitter.recentEngagement.engagementRate*100).toFixed(2)+'% eng &bull; '+(social.makerTwitter.tweetCount||0)+' tweets</span></div>';
+    if(social.telegram)html+='<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:10px 0 6px;">Telegram</div><div class="stat-row"><span class="sl">'+social.telegram.handle+'</span><span class="sv">'+social.telegram.members.toLocaleString()+' members &bull; '+social.telegram.online+' online</span></div>';
     if(social.website)html+='<div class="stat-row"><span class="sl">Website</span><span class="sv">'+social.website+'</span></div>';
-    if(!social.twitter&&!social.telegram)html+='<div style="color:var(--muted);">No social links found</div>';
+    if(!social.twitter&&!social.telegram&&!social.makerTwitter)html+='<div style="color:var(--muted);">No social links found</div>';
   }else html+='<div style="color:var(--muted);">No social data</div>';
   html+='</div>';
 

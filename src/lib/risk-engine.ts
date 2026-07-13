@@ -48,7 +48,9 @@ export async function comprehensiveAnalyze(
   let socialResult: any = { status: "rejected", reason: "skipped" };
 
   // 1. First do light operations
-  socialResult = await Promise.allSettled([scanSocials(tokenAddress)]).then(r => r[0]);
+  try {
+    socialResult = await Promise.allSettled([scanSocials(tokenAddress)]).then(r => r[0]);
+  } catch(e) { /* skip */ }
 
   // 2. Then clustering (light)
   try {
@@ -68,6 +70,13 @@ export async function comprehensiveAnalyze(
     await new Promise(r => setTimeout(r, 300));
     const d = await getDevProfile(connection, tokenAddress);
     devProfile = { status: "fulfilled", value: d };
+    // Re-run social scan with deployer address if found
+    if (d?.deployerAddress && d.deployerAddress !== "unknown") {
+      try {
+        const s2 = await scanSocials(tokenAddress, d.deployerAddress);
+        socialResult = { status: "fulfilled", value: s2 };
+      } catch(e) { /* keep original */ }
+    }
   } catch(e) { /* skip */ }
 
   // 5. Liquidity

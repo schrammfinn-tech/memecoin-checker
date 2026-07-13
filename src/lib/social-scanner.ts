@@ -4,6 +4,7 @@ export interface SocialResult {
   twitter: TwitterAnalysis | null;
   telegram: TelegramAnalysis | null;
   website: string | null;
+  makerTwitter: TwitterAnalysis | null;
   redFlags: SocialRedFlag[];
   socialScore: number;
 }
@@ -35,121 +36,214 @@ export interface TelegramAnalysis {
 }
 
 export interface SocialRedFlag {
-  type: "FAKE_FOLLOWERS" | "LOW_ENGAGEMENT" | "NO_SOCIALS" | "NEW_ACCOUNT" | "EMPTY_TELEGRAM" | "RUG_WORDS" | "BOT_COMMUNITY";
+  type: "FAKE_FOLLOWERS" | "LOW_ENGAGEMENT" | "NO_SOCIALS" | "NEW_ACCOUNT" | "EMPTY_TELEGRAM" | "RUG_WORDS" | "BOT_COMMUNITY" | "MAKER_NO_SOCIAL" | "MAKER_NEW_ACCOUNT";
   severity: "HIGH" | "MEDIUM" | "LOW";
   description: string;
 }
 
 const DEXSCREENER = "https://api.dexscreener.com";
+const SOLSCAN = "https://public-api.solscan.io";
 
-export async function scanSocials(tokenAddress: string): Promise<SocialResult> {
+export async function scanSocials(tokenAddress: string, deployerAddress?: string): Promise<SocialResult> {
   const result: SocialResult = {
-    twitter: null, telegram: null, website: null, redFlags: [], socialScore: 0,
+    twitter: null, telegram: null, website: null, makerTwitter: null, redFlags: [], socialScore: 0,
   };
 
+  // 1. Get token socials from DexScreener
   try {
     const { data } = await axios.get(`${DEXSCREENER}/latest/dex/tokens/${tokenAddress}`, { timeout: 10000 });
     const pairs = data.pairs || [];
-    if (pairs.length === 0) {
-      result.redFlags.push({ type: "NO_SOCIALS", severity: "HIGH", description: "No DEX pairs found - token may not be traded" });
-      result.socialScore = 100;
-      return result;
-    }
+    if (pairs.length > 0) {
+      const baseToken = pairs[0].baseToken || {};
+      const tokenName = baseToken.name || baseToken.symbol || "";
+      const promises: Promise<void>[] = [];
 
-    const baseToken = pairs[0].baseToken || {};
-    const promises: Promise<void>[] = [];
-
-    if (baseToken.twitter) {
-      promises.push(analyzeTwitter(baseToken.twitter).then((t) => { result.twitter = t; }));
-    }
-    if (baseToken.telegram) {
-      promises.push(analyzeTelegram(baseToken.telegram).then((t) => { result.telegram = t; }));
-    }
-
-    if (baseToken.links) {
-      for (const link of baseToken.links) {
-        if (link.type === "twitter" && link.url && !result.twitter) {
-          promises.push(analyzeTwitter(link.url).then((t) => { result.twitter = t; }));
-        }
-        if (link.type === "telegram" && link.url && !result.telegram) {
-          promises.push(analyzeTelegram(link.url).then((t) => { result.telegram = t; }));
-        }
-        if (link.type === "website" && link.url && !result.website) {
-          result.website = link.url;
+      if (baseToken.twitter) {
+        promises.push(analyzeTwitter(baseToken.twitter).then((t) => { result.twitter = t; }));
+      }
+      if (baseToken.telegram) {
+        promises.push(analyzeTelegram(baseToken.telegram).then((t) => { result.telegram = t; }));
+      }
+      if (baseToken.links) {
+        for (const link of baseToken.links) {
+          if (link.type === "twitter" && link.url && !result.twitter) {
+            promises.push(analyzeTwitter(link.url).then((t) => { result.twitter = t; }));
+          }
+          if (link.type === "telegram" && link.url && !result.telegram) {
+            promises.push(analyzeTelegram(link.url).then((t) => { result.telegram = t; }));
+          }
+          if (link.type === "website" && link.url && !result.website) {
+            result.website = link.url;
+          }
         }
       }
+      if (baseToken.website && !result.website) result.website = baseToken.website;
+
+      await Promise.allSettled(promises);
+
+      // Search for maker Twitter by token name
+      if (!result.twitter && tokenName) {
+        try {
+          const makerHandle = await searchTwitterForToken(tokenName);
+          if (makerHandle) {
+            result.makerTwitter = await analyzeTwitter(makerHandle);
+            if (result.makerTwitter) {
+              result.redFlags.push({
+                type: "MAKER_NO_SOCIAL",
+                severity: "LOW",
+                description: `Found potential maker Twitter via token name search: @${makerHandle}`,
+              });
+            }
+          }
+        } catch { /* skip */ }
+      }
     }
-
-    if (baseToken.website && !result.website) result.website = baseToken.website;
-
-    await Promise.allSettled(promises);
   } catch {
-    result.redFlags.push({ type: "NO_SOCIALS", severity: "MEDIUM", description: "Could not fetch social data" });
-    result.socialScore = 50;
-    return result;
+    result.redFlags.push({ type: "NO_SOCIALS", severity: "MEDIUM", description: "Could not fetch token social data" });
   }
 
+  // 2. Search for deployer wallet on social platforms
+  if (deployerAddress && deployerAddress !== "unknown" && !result.makerTwitter) {
+    try {
+      const solscanHandle = await searchSolscanForTwitter(deployerAddress);
+      if (solscanHandle) {
+        result.makerTwitter = await analyzeTwitter(solscanHandle);
+        if (result.makerTwitter) {
+          result.redFlags.push({
+            type: "MAKER_NO_SOCIAL",
+            severity: "LOW",
+            description: `Found maker Twitter via Solscan: @${solscanHandle}`,
+          });
+        }
+      }
+    } catch { /* skip */ }
+
+    // If still no maker found, search token address on Twitter
+    if (!result.makerTwitter) {
+      try {
+        const addrHandle = await searchTwitterForAddress(deployerAddress);
+        if (addrHandle) {
+          result.makerTwitter = await analyzeTwitter(addrHandle);
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  // 3. Score calculation
   let score = 0;
 
-  if (!result.twitter && !result.telegram && !result.website) {
-    result.redFlags.push({ type: "NO_SOCIALS", severity: "HIGH", description: "No social media presence found" });
+  if (!result.twitter && !result.telegram && !result.website && !result.makerTwitter) {
+    result.redFlags.push({ type: "NO_SOCIALS", severity: "HIGH", description: "No social media presence found for token or maker" });
     score += 20;
   }
 
-  if (result.twitter) {
-    const t = result.twitter;
-    if (t.followers > 10000 && t.recentEngagement.engagementRate < 0.001) {
-      result.redFlags.push({
-        type: "FAKE_FOLLOWERS",
-        severity: "HIGH",
-        description: `${t.followers.toLocaleString()} followers but only ~${t.recentEngagement.avgLikes.toFixed(0)} likes per post — likely bought followers or bots`,
-      });
-      score += 20;
-    } else if (t.followers > 5000 && t.recentEngagement.engagementRate < 0.005) {
-      result.redFlags.push({
-        type: "LOW_ENGAGEMENT",
-        severity: "MEDIUM",
-        description: `Low engagement: ${t.followers.toLocaleString()} followers, ${(t.recentEngagement.engagementRate * 100).toFixed(2)}% rate`,
-      });
-      score += 10;
-    }
-
-    if (t.following > t.followers * 3) {
-      result.redFlags.push({
-        type: "BOT_COMMUNITY",
-        severity: "MEDIUM",
-        description: `Following ${t.following.toLocaleString()} accounts — follow-for-follow bot pattern`,
-      });
-      score += 5;
-    }
-
-    for (const reason of t.suspicionReasons) {
-      result.redFlags.push({ type: "RUG_WORDS", severity: "HIGH", description: reason });
-      score += 10;
-    }
+  if (result.twitter) score += scoreTwitter(result.twitter, result.redFlags, "Token");
+  if (result.makerTwitter) {
+    const makerScore = scoreMakerTwitter(result.makerTwitter, result.redFlags);
+    score += makerScore;
   }
-
-  if (result.telegram) {
-    const tg = result.telegram;
-    if (tg.members > 5000 && tg.online < 50) {
-      result.redFlags.push({
-        type: "EMPTY_TELEGRAM",
-        severity: "HIGH",
-        description: `${tg.members.toLocaleString()} members but only ${tg.online} online — likely bot-filled`,
-      });
-      score += 15;
-    } else if (tg.members > 2000 && tg.online < tg.members * 0.02) {
-      result.redFlags.push({
-        type: "EMPTY_TELEGRAM",
-        severity: "MEDIUM",
-        description: "Low Telegram activity relative to member count",
-      });
-      score += 8;
-    }
-  }
+  if (result.telegram) score += scoreTelegram(result.telegram, result.redFlags);
 
   result.socialScore = Math.min(40, score);
   return result;
+}
+
+function scoreTwitter(t: TwitterAnalysis, flags: SocialRedFlag[], prefix: string): number {
+  let s = 0;
+  if (t.followers > 10000 && t.recentEngagement.engagementRate < 0.001) {
+    flags.push({ type: "FAKE_FOLLOWERS", severity: "HIGH", description: `${prefix}: ${t.followers.toLocaleString()} followers but only ~${t.recentEngagement.avgLikes.toFixed(0)} likes per post — likely bought followers` });
+    s += 20;
+  } else if (t.followers > 5000 && t.recentEngagement.engagementRate < 0.005) {
+    flags.push({ type: "LOW_ENGAGEMENT", severity: "MEDIUM", description: `${prefix}: Low engagement — ${t.followers.toLocaleString()} followers, ${(t.recentEngagement.engagementRate * 100).toFixed(2)}% rate` });
+    s += 10;
+  }
+  if (t.following > t.followers * 3) {
+    flags.push({ type: "BOT_COMMUNITY", severity: "MEDIUM", description: `${prefix}: Following ${t.following.toLocaleString()} — follow-for-follow bot pattern` });
+    s += 5;
+  }
+  for (const reason of t.suspicionReasons) {
+    flags.push({ type: "RUG_WORDS", severity: "HIGH", description: reason });
+    s += 10;
+  }
+  return s;
+}
+
+function scoreMakerTwitter(t: TwitterAnalysis, flags: SocialRedFlag[]): number {
+  let s = 0;
+  if (t.followers < 50 && t.tweetCount === 0) {
+    flags.push({ type: "MAKER_NEW_ACCOUNT", severity: "HIGH", description: `Maker account @${t.handle} has 0 tweets — likely a burner account` });
+    s += 15;
+  }
+  if (t.followers < 100) {
+    flags.push({ type: "MAKER_NEW_ACCOUNT", severity: "MEDIUM", description: `Maker @${t.handle} has very few followers (${t.followers}) — possible burner/fresh account` });
+    s += 8;
+  }
+  if (t.followers > 5000 && t.recentEngagement.engagementRate < 0.001) {
+    flags.push({ type: "FAKE_FOLLOWERS", severity: "HIGH", description: `Maker @${t.handle}: ${t.followers.toLocaleString()} followers but near-zero engagement — bought followers` });
+    s += 15;
+  }
+  for (const reason of t.suspicionReasons) {
+    flags.push({ type: "RUG_WORDS", severity: "HIGH", description: `Maker: ${reason}` });
+    s += 10;
+  }
+  return s;
+}
+
+function scoreTelegram(tg: TelegramAnalysis, flags: SocialRedFlag[]): number {
+  let s = 0;
+  if (tg.members > 5000 && tg.online < 50) {
+    flags.push({ type: "EMPTY_TELEGRAM", severity: "HIGH", description: `${tg.members.toLocaleString()} members but only ${tg.online} online — likely bot-filled` });
+    s += 15;
+  } else if (tg.members > 2000 && tg.online < tg.members * 0.02) {
+    flags.push({ type: "EMPTY_TELEGRAM", severity: "MEDIUM", description: "Low Telegram activity relative to member count" });
+    s += 8;
+  }
+  return s;
+}
+
+// Search for Twitter handles matching the token name
+async function searchTwitterForToken(tokenName: string): Promise<string | null> {
+  try {
+    const query = encodeURIComponent(`${tokenName} solana token`);
+    const { data } = await axios.get(`https://nitter.net/search?f=tweets&q=${query}`, {
+      timeout: 8000,
+      headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" },
+    });
+    const html = data as string;
+    const handleMatch = html.match(/@(\w{2,30})/);
+    return handleMatch ? handleMatch[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+// Check Solscan for any social links associated with a wallet
+async function searchSolscanForTwitter(walletAddress: string): Promise<string | null> {
+  try {
+    const { data } = await axios.get(`${SOLSCAN}/account/${walletAddress}`, {
+      timeout: 8000,
+      headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+    });
+    return data?.twitter || data?.metadata?.twitter || null;
+  } catch {
+    return null;
+  }
+}
+
+// Search Twitter for wallet address mentions
+async function searchTwitterForAddress(address: string): Promise<string | null> {
+  try {
+    const short = address.slice(0, 8);
+    const { data } = await axios.get(`https://nitter.net/search?f=tweets&q=${short}+solana`, {
+      timeout: 8000,
+      headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" },
+    });
+    const html = data as string;
+    const handleMatch = html.match(/@(\w{2,30})/);
+    return handleMatch ? handleMatch[1] : null;
+  } catch {
+    return null;
+  }
 }
 
 async function analyzeTwitter(handleOrUrl: string): Promise<TwitterAnalysis | null> {
@@ -169,36 +263,25 @@ async function analyzeTwitter(handleOrUrl: string): Promise<TwitterAnalysis | nu
     });
 
     const html = data as string;
-
     const followers = extractNum(html, /(\d[\d,]*)\s*Followers/i);
     const following = extractNum(html, /(\d[\d,]*)\s*Following/i);
     const tweetCount = extractNum(html, /(\d[\d,]*)\s*Tweets/i);
     const verified = html.includes("verified-icon") || html.includes('icon-verified');
 
     const suspicionReasons: string[] = [];
-
-    // Check bio/tweets for rug-related keywords
     const lowerHtml = html.toLowerCase();
-    const rugKeywords = ["no rug", "safe rug", "cant rug", "won't rug", "wont rug", "liquidity locked", "lp locked", "lp burnt"];
-    let rugKeywordCount = 0;
-    for (const kw of rugKeywords) {
-      if (lowerHtml.includes(kw)) rugKeywordCount++;
-    }
-    if (rugKeywordCount >= 3) {
-      suspicionReasons.push(`Bio/tweets mention "no rug" ${rugKeywordCount} times — common in rug pull projects`);
-    }
+    const rugKeywords = ["no rug", "safe rug", "cant rug", "won't rug", "wont rug", "liquidity locked", "lp locked", "lp burnt", "doxxed", "doxx"];
+    let rugCount = 0;
+    for (const kw of rugKeywords) { if (lowerHtml.includes(kw)) rugCount++; }
+    if (rugCount >= 3) suspicionReasons.push(`Bio/tweets mention rug safety ${rugCount} times — common rug pull pattern`);
+    if (lowerHtml.includes("presale") || lowerHtml.includes("pre-sale")) suspicionReasons.push("Mentions presale — common scam tactic");
 
-    // Check account age via join date
     const joinMatch = html.match(/Joined\s+(\w+\s+\d{4})/i);
     if (joinMatch) {
-      const joinDate = new Date(joinMatch[1]);
-      const daysOld = (Date.now() - joinDate.getTime()) / 86400000;
-      if (daysOld < 30) {
-        suspicionReasons.push(`Account created ${Math.round(daysOld)} days ago — very new account`);
-      }
+      const daysOld = (Date.now() - new Date(joinMatch[1]).getTime()) / 86400000;
+      if (daysOld < 30) suspicionReasons.push(`Account created ${Math.round(daysOld)} days ago — very new`);
     }
 
-    // Extract likes
     const likeMatches = html.match(/tweet-stat[^>]*>(\d[\d,]*)/gi) || [];
     const likes: number[] = [];
     for (const m of likeMatches) {
@@ -211,9 +294,7 @@ async function analyzeTwitter(handleOrUrl: string): Promise<TwitterAnalysis | nu
     const isSuspicious = (followers > 5000 && engagementRate < 0.005) || (followers > 20000 && engagementRate < 0.002) || suspicionReasons.length > 0;
 
     return { handle, followers, following, tweetCount, recentEngagement: { avgLikes, avgRetweets: 0, avgComments: 0, engagementRate, sampleSize: likes.length }, accountAge: joinMatch ? joinMatch[1] : null, verified, isSuspicious, suspicionReasons };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function analyzeTelegram(handleOrUrl: string): Promise<TelegramAnalysis | null> {
@@ -234,12 +315,10 @@ async function analyzeTelegram(handleOrUrl: string): Promise<TelegramAnalysis | 
     const online = extractNum(html, /(\d[\d\s]*)\s*(?:online)/i);
     const isSuspicious = (members > 5000 && online < members * 0.02) || (members > 20000 && online < 100);
     const suspicionReasons: string[] = [];
-    if (members > 10000 && online < 100) suspicionReasons.push(`${members.toLocaleString()} members but only ${online} online — possible bot padding`);
+    if (members > 10000 && online < 100) suspicionReasons.push(`${members.toLocaleString()} members but only ${online} online`);
 
     return { handle, members, online, isSuspicious, suspicionReasons };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 function extractNum(text: string, pattern: RegExp): number {
