@@ -5,6 +5,7 @@ import { detectSnipers } from "../lib/wallet";
 import { comprehensiveAnalyze } from "../lib/risk-engine";
 import { scanSocials } from "../lib/social-scanner";
 import { fetchPriceData } from "../lib/price";
+import { analyzeWhales } from "../lib/whale-monitor";
 
 export const apiRouter = Router();
 
@@ -61,10 +62,23 @@ apiRouter.get("/social/:tokenAddress", async (req: Request, res: Response) => {
   }
 });
 
-apiRouter.get("/price/:tokenAddress", async (req: Request, res: Response) => {
+apiRouter.get("/whales/:tokenAddress", async (req: Request, res: Response) => {
   try {
     const { tokenAddress } = req.params;
-    const result = await fetchPriceData(tokenAddress);
+    const rpcUrl = process.env.HELIUS_RPC_URL || process.env.SOLANA_RPC_URL || "";
+    if (!rpcUrl) throw new Error("RPC not configured");
+    const connection = createConnection(rpcUrl);
+
+    const threshold = parseFloat(req.query.threshold as string) || 500;
+    const hours = parseInt(req.query.hours as string) || 1;
+
+    let priceUsd = 0;
+    try {
+      const priceData = await fetchPriceData(tokenAddress);
+      priceUsd = priceData?.priceUsd ?? 0;
+    } catch {}
+
+    const result = await analyzeWhales(connection, tokenAddress, priceUsd, threshold, hours);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

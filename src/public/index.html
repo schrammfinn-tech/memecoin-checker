@@ -160,7 +160,13 @@ function renderAll(){
   html+='</div>';
 
   // Dashboard cards
+  cards+='<div class="glass clickable accent-cyan" onclick="scrollToSection(\'whales\')"><h3>Whale Monitor</h3><div style="font-size:20px;font-weight:800;color:var(--cyan);" id="whaleNet">Loading...</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">Entries, exits, accumulation, bots</div></div>';
   html+='<div class="grid2">'+cards+'</div>';
+
+  // WHALE section
+  html+='<div class="glass" id="section-whales"><h3>Whale Monitor <span style="font-size:10px;color:var(--muted);">(last hour, &gt;$500)</span></h3>';
+  html+='<div id="whaleResults"><div style="color:var(--muted);padding:8px 0;font-size:13px;">Loading whale data...</div></div>';
+  html+='</div>';
 
   // LIQUIDITY section
   html+='<div class="glass" id="section-liquidity"><h3>Liquidity Lock Analysis</h3>';
@@ -191,7 +197,6 @@ function renderAll(){
   }else{html+='<div style="color:var(--muted);padding:12px 0;">Could not determine developer history</div>';}
   html+='</div>';
 
-  // BUNDLES section
   html+='<div class="glass" id="section-bundles"><h3>Bundle Detection</h3>';
   if(bndl){
     html+='<div class="stat-row"><span class="stat-label">Bundled Launch</span><span class="stat-value '+(bndl.isBundled?'str':'stg')+'">'+(bndl.isBundled?'YES':'No')+'</span></div>';
@@ -245,6 +250,7 @@ function renderAll(){
   document.getElementById('content').innerHTML=html;
   setTimeout(function(){if(cl.length>0)drawViz(wh,h);},300);
   loadPrice();
+  loadWhales();
   }catch(e){document.getElementById('content').innerHTML='<div class="error">Render error: '+e.message+'</div>';}
 }
 
@@ -281,6 +287,40 @@ async function loadPrice(){
       '<iframe src="'+p.chartUrl+'" width="100%" height="420" style="border:none;border-radius:8px;" title="Chart"></iframe>'+
       '</div>';
   }catch(e){el.innerHTML='<div class="glass"><h3>Price Chart</h3><div style="text-align:center;padding:24px;color:var(--muted);">Could not load price data</div></div>';}
+}
+
+// WHALE MONITOR
+async function loadWhales(){
+  if(!currentToken)return;var el=document.getElementById('whaleResults');if(!el)return;
+  try{
+    var resp=await fetch('/api/whales/'+encodeURIComponent(currentToken)+'?threshold=500&hours=1');
+    if(!resp.ok)throw new Error('');var w=await resp.json();
+    var netColor=w.netAccumulationUsd>=0?'stg':'str';
+    var netSign=w.netAccumulationUsd>=0?'+':'';
+    document.getElementById('whaleNet').textContent=netSign+'$'+fmtNum(Math.abs(w.netAccumulationUsd));
+
+    el.innerHTML=
+      '<div class="grid3" style="margin-bottom:12px;">'+
+        '<div class="price-stat"><div class="lbl">Whales Entering</div><div class="val stg">'+w.whalesEntering+'</div></div>'+
+        '<div class="price-stat"><div class="lbl">Whales Exiting</div><div class="val str">'+w.whalesExiting+'</div></div>'+
+        '<div class="price-stat"><div class="lbl">Net Accumulation</div><div class="val '+netColor+'">'+netSign+'$'+fmtNum(Math.abs(w.netAccumulationUsd))+'</div></div>'+
+        '<div class="price-stat"><div class="lbl">Total Whale Vol</div><div class="val">$'+fmtNum(w.totalWhaleVolume||0)+'</div></div>'+
+        '<div class="price-stat"><div class="lbl">Largest Sell</div><div class="val str">'+(w.largestSell?'$'+fmtNum(w.largestSell.valueUsd||0):'None')+'</div></div>'+
+        '<div class="price-stat"><div class="lbl">Bot Wallets</div><div class="val '+(w.botOwnershipPercent>30?'str':'sty')+'">'+w.botWallets+' ('+(w.botOwnershipPercent||0).toFixed(0)+'%)</div></div>'+
+      '</div>';
+
+    if(w.enteringDetails&&w.enteringDetails.length>0){
+      el.innerHTML+='<div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin-bottom:8px;">Recent Whale Entries</div>';
+      el.innerHTML+=w.enteringDetails.slice(0,5).map(function(a){return'<div class="stat-row"><span class="mono">'+a.address.slice(0,22)+'...'+a.address.slice(-6)+'</span><span class="stg">+'+fmtNum(a.amount)+' ($'+fmtNum(a.valueUsd)+')</span><span style="color:var(--muted);font-size:11px;">'+new Date(a.timestamp).toLocaleTimeString()+'</span></div>';}).join('');
+    }
+    if(w.exitingDetails&&w.exitingDetails.length>0){
+      el.innerHTML+='<div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin-bottom:8px;margin-top:12px;">Recent Whale Exits / Sells</div>';
+      el.innerHTML+=w.exitingDetails.slice(0,5).map(function(a){return'<div class="stat-row"><span class="mono">'+a.address.slice(0,22)+'...'+a.address.slice(-6)+'</span><span class="str">-'+fmtNum(a.amount)+' ($'+fmtNum(a.valueUsd)+')</span><span style="color:var(--muted);font-size:11px;">'+new Date(a.timestamp).toLocaleTimeString()+'</span></div>';}).join('');
+    }
+    if(!w.enteringDetails.length&&!w.exitingDetails.length){
+      el.innerHTML+='<div style="color:var(--muted);padding:8px 0;font-size:13px;">No whale activity detected in the last hour</div>';
+    }
+  }catch(e){el.innerHTML='<div style="color:var(--muted);padding:8px 0;">Could not load whale data</div>';}
 }
 
 // SOCIAL
