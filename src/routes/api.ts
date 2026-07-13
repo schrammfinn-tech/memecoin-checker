@@ -7,6 +7,7 @@ import { scanSocials } from "../lib/social-scanner";
 import { fetchPriceData } from "../lib/price";
 import { analyzeWhales } from "../lib/whale-monitor";
 import { assessBuyTiming } from "../lib/buy-timing";
+import { fetchTopGainers } from "../lib/gainers";
 
 export const apiRouter = Router();
 
@@ -98,6 +99,15 @@ apiRouter.get("/whales/:tokenAddress", async (req: Request, res: Response) => {
       },
       totalWalletsTracked: 0,
     });
+  }
+});
+
+apiRouter.get("/gainers", async (_req: Request, res: Response) => {
+  try {
+    const gainers = await fetchTopGainers(8);
+    res.json(gainers);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -74,6 +74,16 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',syste
 .loading{text-align:center;padding:60px 20px;color:var(--muted)}.spinner{display:inline-block;width:24px;height:24px;border:3px solid rgba(255,255,255,0.06);border-top-color:var(--cyan);border-radius:50%;animation:spin 0.7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 .error{background:rgba(243,139,168,0.08);border:1px solid rgba(243,139,168,0.2);color:var(--red);padding:14px;border-radius:10px;font-size:13px}
 .link{color:var(--cyan);text-decoration:none;font-size:11px}.link:hover{text-decoration:underline}
+
+.ticker{background:rgba(16,16,30,0.6);border-bottom:1px solid var(--border);overflow:hidden;height:32px;position:relative}
+.ticker-inner{display:flex;gap:24px;animation:ticker-scroll 40s linear infinite;white-space:nowrap;padding:7px 0;width:max-content}
+.ticker-item{font-size:11px;color:var(--text);display:inline-flex;align-items:center;gap:6px}
+.ticker-item .s{font-weight:600;color:var(--cyan)}
+.ticker-item .c{font-weight:700}
+.ticker-item .c.up{color:var(--green)}
+.ticker-item .c.down{color:var(--red)}
+.ticker-item .m{color:var(--muted);font-size:10px}
+@keyframes ticker-scroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 @media(max-width:700px){.top{padding:10px 14px}.content{padding:12px 14px 40px}.risk-big{font-size:30px}.cards{grid-template-columns:1fr}}
 </style>
 </head>
@@ -85,6 +95,10 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',syste
   <button class="btn-sm" id="sniperBtn" onclick="scanSnipers()" style="display:none">SNIPERS</button>
   <button class="btn-sm" onclick="window.location.href='/setup'" style="margin-left:auto" title="API Settings">SETTINGS</button>
   <span id="tokenName" style="font-size:13px;color:var(--muted);display:none;"></span>
+</div>
+
+<div class="ticker" id="ticker" style="display:none">
+  <div class="ticker-inner" id="tickerInner"></div>
 </div>
 
 <div class="content empty" id="content">
@@ -105,6 +119,32 @@ var appData=null,currentToken='',priceInfo=null,priceHistory=[],priceInterval=nu
         return;
       }
     }
+  } catch(e) {}
+})();
+
+(async function loadTicker(){
+  try {
+    var resp = await fetch('/api/gainers');
+    if (!resp.ok) return;
+    var gainers = await resp.json();
+    if (!gainers.length) return;
+    var ticker = document.getElementById('ticker');
+    var inner = document.getElementById('tickerInner');
+    var items = '';
+    for (var i = 0; i < gainers.length; i++) {
+      var g = gainers[i];
+      var cls = g.priceChange24h >= 0 ? 'up' : 'down';
+      var arrow = g.priceChange24h >= 0 ? '+' : '';
+      var xLabel = '';
+      if (g.priceChange24h >= 10000) xLabel = '100x+';
+      else if (g.priceChange24h >= 5000) xLabel = '50x+';
+      else if (g.priceChange24h >= 1000) xLabel = '10x+';
+      else if (g.priceChange24h >= 500) xLabel = '5x+';
+      else xLabel = Math.round(g.priceChange24h/100) + 'x';
+      items += '<span class="ticker-item"><span class="s">$'+g.symbol+'</span><span class="c '+cls+'">'+arrow+g.priceChange24h.toFixed(0)+'%</span><span class="m">'+xLabel+'</span></span>';
+    }
+    inner.innerHTML = items + items;
+    ticker.style.display = 'block';
   } catch(e) {}
 })();
 
