@@ -28,10 +28,10 @@ export async function buildTransferGraph(
 
   const signatures = await connection.getSignaturesForAddress(mint, { limit: maxTx });
 
-  const batchSize = 15;
+  const batchSize = 5;
   for (let i = 0; i < signatures.length; i += batchSize) {
     const batch = signatures.slice(i, i + batchSize);
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 250));
 
     const txs = await connection.getParsedTransactions(
       batch.map((s) => s.signature),

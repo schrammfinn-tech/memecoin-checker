@@ -40,24 +40,47 @@ export async function comprehensiveAnalyze(
   const holders = onChain.holders;
   const totalSupply = onChain.totalSupply || holders.reduce((s, h) => s + h.amount, 0);
 
-  const [clustersRaw, bundleResult, devProfile, liquidityResult, socialResult] = await Promise.allSettled([
-    (async () => {
-      const { edges, nodeShares } = await buildTransferGraph(connection, tokenAddress, 150);
-      const clusters = findClusters(edges, nodeShares);
-      return computeClusterShare(clusters, totalSupply);
-    })(),
-    detectBundledLaunch(connection, tokenAddress, totalSupply),
-    getDevProfile(connection, tokenAddress),
-    (async () => {
-      let deployer = "unknown";
-      if (holders.length > 0) {
-        const wallet = holders.find((h) => h.owner !== "unknown" && !h.isDex && !h.isContract);
-        deployer = wallet?.owner ?? "unknown";
-      }
-      return analyzeLiquidityLock(connection, tokenAddress, deployer);
-    })(),
-    scanSocials(tokenAddress),
-  ]);
+  // Run heavy RPC features sequentially to avoid rate limits
+  let clustersRaw: any = { status: "rejected", reason: "skipped" };
+  let bundleResult: any = { status: "rejected", reason: "skipped" };
+  let devProfile: any = { status: "rejected", reason: "skipped" };
+  let liquidityResult: any = { status: "rejected", reason: "skipped" };
+  let socialResult: any = { status: "rejected", reason: "skipped" };
+
+  // 1. First do light operations
+  socialResult = await Promise.allSettled([scanSocials(tokenAddress)]).then(r => r[0]);
+
+  // 2. Then clustering (light)
+  try {
+    const { edges, nodeShares } = await buildTransferGraph(connection, tokenAddress, 50);
+    const clustersFound = findClusters(edges, nodeShares);
+    clustersRaw = { status: "fulfilled", value: computeClusterShare(clustersFound, totalSupply) };
+  } catch(e) { /* skip */ }
+
+  // 3. Bundle detection
+  try {
+    const b = await detectBundledLaunch(connection, tokenAddress, totalSupply);
+    bundleResult = { status: "fulfilled", value: b };
+  } catch(e) { /* skip */ }
+
+  // 4. Dev profile
+  try {
+    await new Promise(r => setTimeout(r, 300));
+    const d = await getDevProfile(connection, tokenAddress);
+    devProfile = { status: "fulfilled", value: d };
+  } catch(e) { /* skip */ }
+
+  // 5. Liquidity
+  try {
+    await new Promise(r => setTimeout(r, 300));
+    let deployer = "unknown";
+    if (holders.length > 0) {
+      const wallet = holders.find((h) => h.owner !== "unknown" && !h.isDex && !h.isContract);
+      deployer = wallet?.owner ?? "unknown";
+    }
+    const l = await analyzeLiquidityLock(connection, tokenAddress, deployer);
+    liquidityResult = { status: "fulfilled", value: l };
+  } catch(e) { /* skip */ }
 
   const clusters: WalletCluster[] = clustersRaw.status === "fulfilled" ? clustersRaw.value : [];
   const bundleResultVal = bundleResult.status === "fulfilled" ? bundleResult.value : null;

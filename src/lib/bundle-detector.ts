@@ -26,19 +26,14 @@ export async function detectBundledLaunch(
   totalSupply: number
 ): Promise<BundleDetectionResult> {
   const mint = new PublicKey(tokenAddress);
-  const sigs = await connection.getSignaturesForAddress(mint, { limit: 150 });
+  const sigs = await connection.getSignaturesForAddress(mint, { limit: 60 });
 
-  const batchSize = 10;
-  const buyEvents: {
-    buyer: string;
-    timestamp: number;
-    amount: number;
-    signature: string;
-  }[] = [];
+  const batchSize = 5;
+  const buyEvents: { buyer: string; timestamp: number; amount: number; signature: string }[] = [];
 
-  for (let i = 0; i < Math.min(sigs.length, 100); i += batchSize) {
+  for (let i = 0; i < Math.min(sigs.length, 40); i += batchSize) {
     const batch = sigs.slice(i, i + batchSize);
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 400));
 
     const txs = await connection.getParsedTransactions(
       batch.map((s) => s.signature),

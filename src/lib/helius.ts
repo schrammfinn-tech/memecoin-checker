@@ -124,7 +124,7 @@ export class HeliusClient {
 
     let ownerMap = new Map<string, string>();
     if (resolveOwners && topAccounts.length > 0) {
-      const lookupCount = Math.min(topAccounts.length, 50);
+      const lookupCount = Math.min(topAccounts.length, 20);
       ownerMap = await this.getAccountOwnerBatched(
         topAccounts.slice(0, lookupCount).map((a) => a.address)
       );

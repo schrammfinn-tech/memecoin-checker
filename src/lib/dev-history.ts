@@ -40,9 +40,7 @@ export async function getDevProfile(
     if (!deployer) return null;
 
     const deployerPubkey = new PublicKey(deployer);
-    const deployerSigs = await connection.getSignaturesForAddress(deployerPubkey, {
-      limit: 100,
-    });
+    const deployerSigs = await connection.getSignaturesForAddress(deployerPubkey, { limit: 30 });
 
     const tokenMints = new Set<string>();
     const tokenCreationTimes: number[] = [];
