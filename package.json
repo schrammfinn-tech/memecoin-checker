@@ -1,18 +1,32 @@
 {
   "name": "memecoin-checker",
   "version": "1.0.0",
-  "description": "Solana memecoin wallet analysis and Bubblemaps integration tool",
+  "description": "On-chain analysis tool for Solana memecoins — holder clustering, bundle detection, liquidity locks, dev history tracking, social scanner, and risk scoring",
   "main": "dist/electron/main.js",
-  "bin": {
-    "memecheck": "./dist/cli.js"
+  "author": "Memecoin Checker",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/schrammfinn-tech/memecoin-checker"
   },
+  "keywords": [
+    "solana",
+    "memecoin",
+    "crypto",
+    "token-analysis",
+    "rug-check",
+    "bundle-detection",
+    "wallet-clustering",
+    "liquidity-lock",
+    "developer-history",
+    "social-scanner",
+    "electron"
+  ],
   "scripts": {
     "build": "tsc && node -e \"const fs=require('fs');const p=require('path');const s='src/public';const d='dist/public';fs.mkdirSync(d,{recursive:true});fs.readdirSync(s).forEach(f=>fs.copyFileSync(p.join(s,f),p.join(d,f)))\"",
     "start": "electron .",
     "cli": "node dist/cli.js",
     "server": "node dist/server.js",
-    "dev": "ts-node src/cli.ts",
-    "dev:server": "ts-node src/server.ts",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
@@ -36,48 +50,32 @@
       "icon": "src/public/icon.ico"
     },
     "mac": {
-      "target": [
-        "dmg"
-      ]
+      "target": ["dmg"]
     },
     "linux": {
-      "target": [
-        "AppImage"
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "target": ["AppImage"]
     },
     "extraResources": [
-      {
-        "from": ".env",
-        "to": ".env"
-      }
+      { "from": ".env", "to": ".env" }
     ],
     "asar": false
   },
   "dependencies": {
     "@solana/web3.js": "^1.95.0",
     "axios": "^1.7.0",
-    "bs58": "^6.0.0",
     "chalk": "^4.1.2",
     "commander": "^12.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
-    "express": "^4.21.0",
-    "open": "^10.1.0"
+    "express": "^4.21.0"
   },
   "devDependencies": {
-    "@types/bs58": "^4.0.4",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.0",
-    "concurrently": "^10.0.3",
     "electron": "^43.1.0",
     "electron-builder": "^26.15.3",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.0",
-    "wait-on": "^9.0.10"
+    "typescript": "^5.5.0"
   }
 }

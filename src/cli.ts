@@ -90,10 +90,9 @@ program
   .command("web")
   .description("Start the web dashboard")
   .option("-p, --port <port>", "Port number", process.env.PORT || "3000")
-  .option("--no-open", "Don't open browser")
-  .action(async (options: { port: string; open: boolean }) => {
+  .action(async (options: { port: string }) => {
     const { startServer } = await import("./server");
-    startServer(parseInt(options.port), options.open);
+    startServer(parseInt(options.port));
   });
 
 program.parse();
