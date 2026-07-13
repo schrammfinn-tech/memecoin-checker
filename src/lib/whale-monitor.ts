@@ -39,7 +39,7 @@ export async function analyzeWhales(
   connection: Connection,
   tokenAddress: string,
   priceUsd: number,
-  whaleThresholdUsd = 500
+  whaleThresholdUsd = 1
 ): Promise<WhaleReport> {
   const mint = new PublicKey(tokenAddress);
   const now = Date.now();

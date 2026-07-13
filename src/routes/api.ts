@@ -81,7 +81,7 @@ apiRouter.get("/whales/:tokenAddress", async (req: Request, res: Response) => {
     if (!rpcUrl) throw new Error("RPC not configured");
     const connection = createConnection(rpcUrl);
 
-    const threshold = parseFloat(req.query.threshold as string) || 500;
+    const threshold = parseFloat(req.query.threshold as string) || 1;
 
     let priceUsd = 0;
     try {

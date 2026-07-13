@@ -4,6 +4,15 @@ import * as fs from "fs";
 import * as dotenv from "dotenv";
 
 function loadEnv() {
+  const userDataPath = app.getPath("userData");
+  const userEnvPath = path.join(userDataPath, ".env");
+
+  if (fs.existsSync(userEnvPath)) {
+    dotenv.config({ path: userEnvPath });
+    console.log("Loaded .env from:", userEnvPath);
+    return;
+  }
+
   const possiblePaths = [
     path.join(app.getAppPath(), ".env"),
     path.join(process.cwd(), ".env"),
@@ -32,7 +41,8 @@ async function startServer(): Promise<number> {
   return new Promise((resolve, reject) => {
     try {
       const { createApp } = require("../app");
-      const expressApp = createApp();
+      const userDataPath = app.getPath("userData");
+      const expressApp = createApp(userDataPath);
       httpServer = expressApp.listen(0, "127.0.0.1", () => {
         const addr = httpServer.address();
         console.log("Server started on port", addr.port);

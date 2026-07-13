@@ -55,9 +55,6 @@
     "linux": {
       "target": ["AppImage"]
     },
-    "extraResources": [
-      { "from": ".env", "to": ".env" }
-    ],
     "asar": false
   },
   "dependencies": {

@@ -42,7 +42,7 @@ export interface SocialRedFlag {
 }
 
 const DEXSCREENER = "https://api.dexscreener.com";
-const SOLSCAN = "https://public-api.solscan.io";
+
 const NITTER_INSTANCES = [
   "https://nitter.privacydev.net",
   "https://nitter.poast.org",
@@ -56,26 +56,34 @@ export async function scanSocials(tokenAddress: string, deployerAddress?: string
 
   // 1. Get token socials from DexScreener
   try {
-    const { data } = await axios.get(`${DEXSCREENER}/latest/dex/tokens/${tokenAddress}`, { timeout: 10000 });
+    const { data } = await axios.get(`${DEXSCREENER}/latest/dex/tokens/${tokenAddress}`, { timeout: 8000 });
     const pairs = data.pairs || [];
     if (pairs.length > 0) {
       const baseToken = pairs[0].baseToken || {};
       const tokenName = baseToken.name || baseToken.symbol || "";
-      const promises: Promise<void>[] = [];
 
+      // Extract social handles directly (DexScreener has these from on-chain metadata)
       if (baseToken.twitter) {
-        promises.push(analyzeTwitter(baseToken.twitter).then((t) => { result.twitter = t; }));
+        const handle = extractHandle(baseToken.twitter);
+        if (handle) {
+          result.twitter = { handle, followers: 0, following: 0, tweetCount: 0, recentEngagement: { avgLikes: 0, avgRetweets: 0, avgComments: 0, engagementRate: 0, sampleSize: 0 }, accountAge: null, verified: false, isSuspicious: false, suspicionReasons: [] };
+        }
       }
       if (baseToken.telegram) {
-        promises.push(analyzeTelegram(baseToken.telegram).then((t) => { result.telegram = t; }));
+        const handle = extractHandle(baseToken.telegram);
+        if (handle) {
+          result.telegram = { handle, members: 0, online: 0, isSuspicious: false, suspicionReasons: [] };
+        }
       }
       if (baseToken.links) {
         for (const link of baseToken.links) {
           if (link.type === "twitter" && link.url && !result.twitter) {
-            promises.push(analyzeTwitter(link.url).then((t) => { result.twitter = t; }));
+            const handle = extractHandle(link.url);
+            if (handle) result.twitter = { handle, followers: 0, following: 0, tweetCount: 0, recentEngagement: { avgLikes: 0, avgRetweets: 0, avgComments: 0, engagementRate: 0, sampleSize: 0 }, accountAge: null, verified: false, isSuspicious: false, suspicionReasons: [] };
           }
           if (link.type === "telegram" && link.url && !result.telegram) {
-            promises.push(analyzeTelegram(link.url).then((t) => { result.telegram = t; }));
+            const handle = extractHandle(link.url);
+            if (handle) result.telegram = { handle, members: 0, online: 0, isSuspicious: false, suspicionReasons: [] };
           }
           if (link.type === "website" && link.url && !result.website) {
             result.website = link.url;
@@ -84,61 +92,41 @@ export async function scanSocials(tokenAddress: string, deployerAddress?: string
       }
       if (baseToken.website && !result.website) result.website = baseToken.website;
 
-      await Promise.allSettled(promises);
+      // Quick Twitter analysis for the found handles
+      const analysisPromises: Promise<void>[] = [];
+      if (result.twitter) {
+        analysisPromises.push(
+          analyzeTwitter(result.twitter.handle).then((t) => { if (t) result.twitter = t; })
+        );
+      }
+      if (result.telegram) {
+        analysisPromises.push(
+          analyzeTelegram(result.telegram.handle).then((t) => { if (t) result.telegram = t; })
+        );
+      }
+      await Promise.allSettled(analysisPromises);
 
-      // Search for maker Twitter by token name
-      if (!result.twitter && tokenName) {
+      // Search for maker Twitter by token name (quick attempt)
+      if (!result.twitter && tokenName && deployerAddress) {
         try {
-          const makerHandle = await searchTwitterForToken(tokenName);
+          const makerHandle = await findMakerTwitter(tokenName, deployerAddress);
           if (makerHandle) {
-            result.makerTwitter = await analyzeTwitter(makerHandle);
-            if (result.makerTwitter) {
-              result.redFlags.push({
-                type: "MAKER_NO_SOCIAL",
-                severity: "LOW",
-                description: `Found potential maker Twitter via token name search: @${makerHandle}`,
-              });
-            }
+            result.makerTwitter = { handle: makerHandle, followers: 0, following: 0, tweetCount: 0, recentEngagement: { avgLikes: 0, avgRetweets: 0, avgComments: 0, engagementRate: 0, sampleSize: 0 }, accountAge: null, verified: false, isSuspicious: false, suspicionReasons: [] };
+            const makerAnalysis = await analyzeTwitter(makerHandle);
+            if (makerAnalysis) result.makerTwitter = makerAnalysis;
           }
         } catch { /* skip */ }
       }
     }
   } catch {
-    result.redFlags.push({ type: "NO_SOCIALS", severity: "MEDIUM", description: "Could not fetch token social data" });
+    // DexScreener not available — token may not have pairs
   }
 
-  // 2. Search for deployer wallet on social platforms
-  if (deployerAddress && deployerAddress !== "unknown" && !result.makerTwitter) {
-    try {
-      const solscanHandle = await searchSolscanForTwitter(deployerAddress);
-      if (solscanHandle) {
-        result.makerTwitter = await analyzeTwitter(solscanHandle);
-        if (result.makerTwitter) {
-          result.redFlags.push({
-            type: "MAKER_NO_SOCIAL",
-            severity: "LOW",
-            description: `Found maker Twitter via Solscan: @${solscanHandle}`,
-          });
-        }
-      }
-    } catch { /* skip */ }
-
-    // If still no maker found, search token address on Twitter
-    if (!result.makerTwitter) {
-      try {
-        const addrHandle = await searchTwitterForAddress(deployerAddress);
-        if (addrHandle) {
-          result.makerTwitter = await analyzeTwitter(addrHandle);
-        }
-      } catch { /* skip */ }
-    }
-  }
-
-  // 3. Score calculation
+  // 2. Score calculation
   let score = 0;
 
   if (!result.twitter && !result.telegram && !result.website && !result.makerTwitter) {
-    result.redFlags.push({ type: "NO_SOCIALS", severity: "HIGH", description: "No social media presence found for token or maker" });
+    result.redFlags.push({ type: "NO_SOCIALS", severity: "HIGH", description: "No social media presence found — common for rug pulls and fake tokens" });
     score += 20;
   }
 
@@ -206,139 +194,95 @@ function scoreTelegram(tg: TelegramAnalysis, flags: SocialRedFlag[]): number {
   return s;
 }
 
-async function fetchNitter(path: string, timeout = 8000): Promise<string | null> {
+function extractHandle(urlOrHandle: string): string | null {
+  if (!urlOrHandle) return null;
+  let handle = urlOrHandle;
+  if (handle.includes("twitter.com") || handle.includes("x.com")) {
+    const match = handle.match(/(?:twitter\.com|x\.com)\/([^/?\s]+)/);
+    if (match) handle = match[1];
+  }
+  if (handle.includes("t.me/")) handle = handle.split("t.me/").pop() || "";
+  handle = handle.replace("@", "").replace("+", "").trim();
+  if (handle && handle.length >= 2 && handle.length <= 30 && !handle.includes("/")) return handle;
+  return null;
+}
+
+async function findMakerTwitter(tokenName: string, deployerAddress: string): Promise<string | null> {
+  try {
+    const query = encodeURIComponent(`${tokenName} solana`);
+    for (const base of ["https://nitter.privacydev.net", "https://nitter.poast.org"]) {
+      try {
+        const { data } = await axios.get(`${base}/search?f=tweets&q=${query}`, {
+          timeout: 5000,
+          headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" },
+        });
+        const html = data as string;
+        const match = html.match(/@(\w{2,30})/);
+        if (match) return match[1];
+      } catch { continue; }
+    }
+  } catch { /* skip */ }
+  return null;
+}
+
+async function analyzeTwitter(handle: string): Promise<TwitterAnalysis | null> {
   for (const base of NITTER_INSTANCES) {
     try {
-      const { data } = await axios.get(`${base}${path}`, {
-        timeout,
+      const { data } = await axios.get(`${base}/${handle}`, {
+        timeout: 6000,
         headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "text/html" },
       });
-      if (data && typeof data === "string" && data.length > 500) return data;
+      const html = data as string;
+      if (!html || html.length < 500) continue;
+
+      const followers = extractNum(html, /(\d[\d,]*)\s*Followers/i);
+      const following = extractNum(html, /(\d[\d,]*)\s*Following/i);
+      const tweetCount = extractNum(html, /(\d[\d,]*)\s*Tweets/i);
+      const verified = html.includes("verified-icon") || html.includes("icon-verified");
+
+      const joinMatch = html.match(/Joined\s+(\w+\s+\d{4})/i);
+      const accountAge = joinMatch ? joinMatch[1] : null;
+
+      const suspicionReasons: string[] = [];
+      const lowerHtml = html.toLowerCase();
+      const rugKeywords = ["no rug", "safe rug", "cant rug", "won't rug", "wont rug", "liquidity locked", "lp locked", "lp burnt", "doxxed", "doxx"];
+      let rugCount = 0;
+      for (const kw of rugKeywords) { if (lowerHtml.includes(kw)) rugCount++; }
+      if (rugCount >= 3) suspicionReasons.push(`Bio/tweets mention rug safety ${rugCount} times — common rug pull pattern`);
+      if (lowerHtml.includes("presale") || lowerHtml.includes("pre-sale")) suspicionReasons.push("Mentions presale — common scam tactic");
+
+      if (joinMatch) {
+        const daysOld = (Date.now() - new Date(joinMatch[1]).getTime()) / 86400000;
+        if (daysOld < 30) suspicionReasons.push(`Account created ${Math.round(daysOld)} days ago — very new`);
+      }
+
+      const likeMatches = html.match(/tweet-stat[^>]*>(\d[\d,]*)/gi) || [];
+      const likes: number[] = [];
+      for (const m of likeMatches) {
+        const num = extractNum(m, /(\d[\d,]*)/);
+        if (num > 0 && likes.length < 10) likes.push(num);
+      }
+
+      const avgLikes = likes.length > 0 ? likes.reduce((a, b) => a + b, 0) / likes.length : 0;
+      const engagementRate = followers > 0 ? avgLikes / followers : 0;
+      const isSuspicious = (followers > 5000 && engagementRate < 0.005) || (followers > 20000 && engagementRate < 0.002) || suspicionReasons.length > 0;
+
+      return {
+        handle, followers, following, tweetCount,
+        recentEngagement: { avgLikes, avgRetweets: 0, avgComments: 0, engagementRate, sampleSize: likes.length },
+        accountAge, verified, isSuspicious, suspicionReasons,
+      };
     } catch { continue; }
   }
   return null;
 }
 
-// Search for Twitter handles matching the token name
-async function searchTwitterForToken(tokenName: string): Promise<string | null> {
+async function analyzeTelegram(handle: string): Promise<TelegramAnalysis | null> {
   try {
-    const query = encodeURIComponent(`${tokenName} solana token`);
-    const html = await fetchNitter(`/search?f=tweets&q=${query}`);
-    if (!html) return null;
-    const handleMatch = html.match(/@(\w{2,30})/);
-    return handleMatch ? handleMatch[1] : null;
-  } catch {
-    return null;
-  }
-}
-
-// Check Solscan for any social links associated with a wallet
-async function searchSolscanForTwitter(walletAddress: string): Promise<string | null> {
-  try {
-    const { data } = await axios.get(`${SOLSCAN}/account/${walletAddress}`, {
-      timeout: 8000,
-      headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
-    });
-    return data?.twitter || data?.metadata?.twitter || null;
-  } catch {
-    return null;
-  }
-}
-
-// Search Twitter for wallet address mentions
-async function searchTwitterForAddress(address: string): Promise<string | null> {
-  try {
-    const short = address.slice(0, 8);
-    const html = await fetchNitter(`/search?f=tweets&q=${short}+solana`);
-    if (!html) return null;
-    const handleMatch = html.match(/@(\w{2,30})/);
-    return handleMatch ? handleMatch[1] : null;
-  } catch {
-    return null;
-  }
-}
-
-async function analyzeTwitter(handleOrUrl: string): Promise<TwitterAnalysis | null> {
-  try {
-    let handle = handleOrUrl;
-    if (handle.includes("twitter.com") || handle.includes("x.com")) {
-      const match = handle.match(/(?:twitter\.com|x\.com)\/([^/?\s]+)/);
-      if (match) handle = match[1];
-      else return null;
-    }
-    handle = handle.replace("@", "").trim();
-    if (!handle || handle.length < 2 || handle.length > 30) return null;
-
-    let followers = 0;
-    let following = 0;
-    let tweetCount = 0;
-    let verified = false;
-    let joinDate: string | null = null;
-    let likes: number[] = [];
-
-    const html = await fetchNitter(`/${handle}`, 10000);
-
-    if (!html) {
-      return {
-        handle, followers: 0, following: 0, tweetCount: 0,
-        recentEngagement: { avgLikes: 0, avgRetweets: 0, avgComments: 0, engagementRate: 0, sampleSize: 0 },
-        accountAge: null, verified: false, isSuspicious: false, suspicionReasons: [],
-      };
-    }
-
-    followers = extractNum(html, /(\d[\d,]*)\s*Followers/i);
-    following = extractNum(html, /(\d[\d,]*)\s*Following/i);
-    tweetCount = extractNum(html, /(\d[\d,]*)\s*Tweets/i);
-    verified = html.includes("verified-icon") || html.includes("icon-verified");
-
-    const joinMatch = html.match(/Joined\s+(\w+\s+\d{4})/i);
-    if (joinMatch) joinDate = joinMatch[1];
-
-    const likeMatches = html.match(/tweet-stat[^>]*>(\d[\d,]*)/gi) || [];
-    for (const m of likeMatches) {
-      const num = extractNum(m, /(\d[\d,]*)/);
-      if (num > 0 && likes.length < 10) likes.push(num);
-    }
-
-    const avgLikes = likes.length > 0 ? likes.reduce((a, b) => a + b, 0) / likes.length : 0;
-    const engagementRate = followers > 0 ? avgLikes / followers : 0;
-
-    const suspicionReasons: string[] = [];
-    const lowerHtml = html.toLowerCase();
-    const rugKeywords = ["no rug", "safe rug", "cant rug", "won't rug", "wont rug", "liquidity locked", "lp locked", "lp burnt", "doxxed", "doxx"];
-    let rugCount = 0;
-    for (const kw of rugKeywords) { if (lowerHtml.includes(kw)) rugCount++; }
-    if (rugCount >= 3) suspicionReasons.push(`Bio/tweets mention rug safety ${rugCount} times — common rug pull pattern`);
-    if (lowerHtml.includes("presale") || lowerHtml.includes("pre-sale")) suspicionReasons.push("Mentions presale — common scam tactic");
-
-    if (joinDate) {
-      const daysOld = (Date.now() - new Date(joinDate).getTime()) / 86400000;
-      if (daysOld < 30) suspicionReasons.push(`Account created ${Math.round(daysOld)} days ago — very new`);
-    }
-
-    const isSuspicious = (followers > 5000 && engagementRate < 0.005) || (followers > 20000 && engagementRate < 0.002) || suspicionReasons.length > 0;
-
-    return {
-      handle, followers, following, tweetCount,
-      recentEngagement: { avgLikes, avgRetweets: 0, avgComments: 0, engagementRate, sampleSize: likes.length },
-      accountAge: joinDate, verified, isSuspicious, suspicionReasons,
-    };
-  } catch { return null; }
-}
-
-async function analyzeTelegram(handleOrUrl: string): Promise<TelegramAnalysis | null> {
-  try {
-    let handle = handleOrUrl;
-    if (handle.includes("t.me/")) handle = handle.split("t.me/").pop() || "";
-    else if (handle.includes("telegram.me/")) handle = handle.split("telegram.me/").pop() || "";
-    handle = handle.replace("@", "").replace("+", "").trim();
-    if (!handle || handle.length < 2) return null;
-
     const { data } = await axios.get(`https://t.me/${handle}`, {
-      timeout: 10000,
+      timeout: 6000,
       headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "text/html" },
     });
-
     const html = data as string;
     const members = extractNum(html, /(\d[\d\s]*)\s*(?:members|subscribers|member)/i);
     const online = extractNum(html, /(\d[\d\s]*)\s*(?:online)/i);

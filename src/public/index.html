@@ -92,13 +92,14 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',syste
 </div>
 
 <script>
-var appData=null,currentToken='',priceInfo=null;
+var appData=null,currentToken='',priceInfo=null,priceHistory=[],priceInterval=null;
 
 document.getElementById('tokenInput').addEventListener('keydown',function(e){if(e.key==='Enter')analyze();});
 
 async function analyze(){
   var addr=document.getElementById('tokenInput').value.trim();if(!addr)return;
-  currentToken=addr;appData=null;priceInfo=null;
+  currentToken=addr;appData=null;priceInfo=null;priceHistory=[];lastPriceUsd=0;
+  if(priceInterval){clearInterval(priceInterval);priceInterval=null;}
   var c=document.getElementById('content');c.className='content';
   c.style.animation='none';c.offsetHeight;c.style.animation='fadeIn 0.3s ease';
   c.innerHTML='<div class="loading"><div class="spinner"></div><br><span style="font-size:14px;">Analyzing</span><br><span class="mono" style="font-size:12px;">'+addr.slice(0,16)+'...</span></div>';
@@ -106,12 +107,12 @@ async function analyze(){
 
   try{
     var resp=await fetch('/api/check/'+encodeURIComponent(addr));
-    if(!resp.ok){var e=await resp.json();throw new Error(e.error);}
+    if(!resp.ok){var e=await resp.json().catch(function(){return{error:'Server error: '+resp.status};});throw new Error(e.error||'Request failed');}
     appData=await resp.json();
     document.getElementById('sniperBtn').style.display='inline-block';
     c.style.opacity='0';c.style.transition='opacity 0.15s';
     setTimeout(function(){c.style.opacity='1';render();},100);
-  }catch(err){c.innerHTML='<div class="error">'+err.message+'</div>';}
+  }catch(err){c.innerHTML='<div class="error">'+(err.message||'Network error - check that the server is running')+'</div>';}
   finally{document.getElementById('analyzeBtn').disabled=false;}
 }
 
@@ -226,7 +227,7 @@ function render(){
   html+='</div>';
 
   // WHALES
-  html+='<div class="glass" id="sec-whales"><h3>Whale Monitor (last hour, &gt;$500)</h3><div id="whaleData"><div style="color:var(--muted);"><div class="spinner" style="width:14px;height:14px;"></div> Loading...</div></div></div>';
+  html+='<div class="glass" id="sec-whales"><h3>Whale Monitor (all txns)</h3><div id="whaleData"><div style="color:var(--muted);"><div class="spinner" style="width:14px;height:14px;"></div> Loading...</div></div></div>';
 
   // CLUSTERS
   html+='<div class="glass" id="sec-clusters"><h3>Wallet Clusters</h3>';
@@ -273,6 +274,8 @@ function mb(label,val,max,color){
 }
 
 // PRICE
+var priceHistory=[],priceInterval=null,lastPriceUsd=0;
+
 async function loadPriceData(){
   if(!currentToken)return;var el=document.getElementById('priceContent');if(!el)return;
   try{
@@ -282,7 +285,6 @@ async function loadPriceData(){
     if(!p||!p.pairAddress){el.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted);">No DEX pair found for this token</div>';return;}
 
     var link=document.getElementById('dexLink');if(link){link.style.display='inline';link.href=p.url||'#';}
-    // Show token name
     if(p.tokenName){
       var tn=document.getElementById('tokenName');tn.style.display='inline';tn.textContent=p.tokenName+(p.tokenSymbol?' ($'+p.tokenSymbol+')':'');
       document.getElementById('topTitle').textContent=p.tokenName||'MEMECOIN CHECKER';
@@ -292,8 +294,8 @@ async function loadPriceData(){
     var arrow=p.priceChange24h>=0?'&#9650;':'&#9660;';
     el.innerHTML=
       '<div style="display:flex;gap:20px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">'+
-        '<div style="font-size:26px;font-weight:800;">$'+p.priceUsd.toFixed(p.priceUsd<0.01?8:p.priceUsd<1?6:4)+'</div>'+
-        '<div class="'+cs+'" style="font-size:18px;font-weight:700;">'+arrow+' '+p.priceChange24h.toFixed(1)+'%</div>'+
+        '<div style="font-size:26px;font-weight:800;" id="livePrice">$'+p.priceUsd.toFixed(p.priceUsd<0.01?8:p.priceUsd<1?6:4)+'</div>'+
+        '<div class="'+cs+'" style="font-size:18px;font-weight:700;" id="liveChange">'+arrow+' '+p.priceChange24h.toFixed(1)+'%</div>'+
         '<div style="font-size:12px;color:var(--muted);">Liq: $'+fmt(p.liquidityUsd)+'</div>'+
         '<div style="font-size:12px;color:var(--muted);">Vol 24h: $'+fmt(p.volume24h)+'</div>'+
         '<div style="font-size:12px;color:var(--muted);">MC: $'+fmt(p.marketCap)+'</div>'+
@@ -301,62 +303,126 @@ async function loadPriceData(){
       '</div>'+
       '<canvas id="priceChart" class="chart-canvas"></canvas>';
 
-    // Draw simple price chart from timeframes
-    setTimeout(function(){
-      var canvas=document.getElementById('priceChart');if(!canvas)return;
-      var W=canvas.parentElement.clientWidth-40;canvas.width=W;canvas.height=200;
-      var ctx=canvas.getContext('2d'),H=200;
-      var changes=[p.priceChange24h||0,p.priceChange6h||0,p.priceChange1h||0,0];
-      var prices=[];var current=p.priceUsd;
-      for(var i=changes.length-1;i>=0;i--){
-        if(i===changes.length-1){prices.push(current);continue;}
-        var prev=current/(1+changes[i]/100);
-        prices.unshift(prev);current=prev;
-      }
-      prices.unshift(prices[0]*(1-changes[0]/200));
-      prices.push(p.priceUsd);
+    priceHistory=[];
+    var changes=[p.priceChange24h||0,p.priceChange6h||0,p.priceChange1h||0,0];
+    var now=Date.now();
+    var cur=p.priceUsd;
+    var intervals=[86400000,21600000,3600000,0];
+    for(var i=0;i<changes.length;i++){
+      var t=now-intervals[i];
+      if(i===changes.length-1){priceHistory.push({time:now,price:cur});continue;}
+      var prev=cur/(1+changes[i]/100);
+      priceHistory.push({time:t,price:prev});
+      cur=prev;
+    }
+    priceHistory.sort(function(a,b){return a.time-b.time;});
+    lastPriceUsd=p.priceUsd;
 
-      var min=Math.min.apply(null,prices),max=Math.max.apply(null,prices);
-      var range=max-min||0.0001;
-      var pad={l:8,r:8,t:8,b:16};
-      var cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
-
-      // Grid
-      ctx.strokeStyle='rgba(255,255,255,0.04)';ctx.lineWidth=1;
-      for(var gi=0;gi<4;gi++){var gy=pad.t+(ch/3)*gi;ctx.beginPath();ctx.moveTo(pad.l,gy);ctx.lineTo(W-pad.r,gy);ctx.stroke();}
-
-      // Line
-      ctx.beginPath();ctx.strokeStyle='#89dceb';ctx.lineWidth=2;
-      for(var pi=0;pi<prices.length;pi++){
-        var px=pad.l+(pi/(prices.length-1))*cw;
-        var py=pad.t+ch-((prices[pi]-min)/range)*ch;
-        if(pi===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
-      }
-      ctx.stroke();
-
-      // Gradient fill
-      var grad=ctx.createLinearGradient(0,pad.t,0,H);
-      grad.addColorStop(0,'rgba(137,220,235,0.2)');grad.addColorStop(1,'rgba(137,220,235,0)');
-      ctx.lineTo(W-pad.r,H-pad.b);ctx.lineTo(pad.l,H-pad.b);ctx.closePath();
-      ctx.fillStyle=grad;ctx.fill();
-
-      // Labels
-      ctx.fillStyle='#72768a';ctx.font='9px Inter,sans-serif';
-      ctx.fillText('24h ago',pad.l,H-3);ctx.fillText('Now',W-pad.r-25,H-3);
-
-      // Price labels
-      ctx.fillStyle='#e2e4f0';ctx.font='bold 10px Inter,sans-serif';
-      ctx.fillText('$'+max.toFixed(p.priceUsd<0.01?8:6),pad.l,pad.t+10);
-      ctx.fillText('$'+min.toFixed(p.priceUsd<0.01?8:6),pad.l,pad.t+ch);
-    },100);
+    setTimeout(function(){redrawPriceChart();},100);
+    startPricePolling();
   }catch(e){el.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted);">Could not load price data</div>';}
+}
+
+function startPricePolling(){
+  if(priceInterval)clearInterval(priceInterval);
+  priceInterval=setInterval(fetchPriceUpdate,30000);
+}
+
+async function fetchPriceUpdate(){
+  if(!currentToken)return;
+  try{
+    var resp=await fetch('/api/price/'+encodeURIComponent(currentToken));
+    if(!resp.ok)return;
+    var p=await resp.json();
+    if(!p||!p.priceUsd)return;
+    lastPriceUsd=p.priceUsd;
+
+    var lp=document.getElementById('livePrice');
+    if(lp)lp.textContent='$'+p.priceUsd.toFixed(p.priceUsd<0.01?8:p.priceUsd<1?6:4);
+    var lc=document.getElementById('liveChange');
+    if(lc){
+      var cs2=p.priceChange24h>=0?'g':'r';
+      var arr2=p.priceChange24h>=0?'&#9650;':'&#9660;';
+      lc.className=cs2;
+      lc.innerHTML=arr2+' '+p.priceChange24h.toFixed(1)+'%';
+    }
+
+    var now=Date.now();
+    if(priceHistory.length===0||Math.abs(p.priceUsd-priceHistory[priceHistory.length-1].price)>0.00000001){
+      priceHistory.push({time:now,price:p.priceUsd});
+      if(priceHistory.length>120)priceHistory.shift();
+    }
+    redrawPriceChart();
+  }catch(e){}
+}
+
+function redrawPriceChart(){
+  var canvas=document.getElementById('priceChart');
+  if(!canvas||priceHistory.length<2)return;
+  var container=canvas.parentElement;
+  var W=container.clientWidth-40;canvas.width=W;canvas.height=220;
+  var ctx=canvas.getContext('2d'),H=220;
+  var pad={l:8,r:8,t:8,b:20};
+
+  var prices=priceHistory.map(function(d){return d.price;});
+  var min=Math.min.apply(null,prices),max=Math.max.apply(null,prices);
+  var range=max-min||0.0001;
+  if(range<0.00000001)range=0.00000001;
+  var cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+
+  ctx.clearRect(0,0,W,H);
+
+  ctx.strokeStyle='rgba(255,255,255,0.04)';ctx.lineWidth=1;
+  for(var gi=0;gi<4;gi++){var gy=pad.t+(ch/3)*gi;ctx.beginPath();ctx.moveTo(pad.l,gy);ctx.lineTo(W-pad.r,gy);ctx.stroke();}
+
+  ctx.beginPath();ctx.strokeStyle='#89dceb';ctx.lineWidth=2;
+  for(var pi=0;pi<prices.length;pi++){
+    var px=pad.l+(pi/Math.max(1,prices.length-1))*cw;
+    var py=pad.t+ch-((prices[pi]-min)/range)*ch;
+    if(pi===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+
+  var grad=ctx.createLinearGradient(0,pad.t,0,H);
+  grad.addColorStop(0,'rgba(137,220,235,0.2)');grad.addColorStop(1,'rgba(137,220,235,0)');
+  ctx.lineTo(W-pad.r,H-pad.b);ctx.lineTo(pad.l,H-pad.b);ctx.closePath();
+  ctx.fillStyle=grad;ctx.fill();
+
+  ctx.beginPath();
+  var lx=pad.l+(prices.length-1)/Math.max(1,prices.length-1)*cw;
+  var ly=pad.t+ch-((prices[prices.length-1]-min)/range)*ch;
+  ctx.arc(lx,ly,4,0,Math.PI*2);
+  ctx.fillStyle='#89dceb';ctx.fill();
+  ctx.strokeStyle='#06060e';ctx.lineWidth=1.5;ctx.stroke();
+
+  ctx.fillStyle='#72768a';ctx.font='9px Inter,sans-serif';
+  if(priceHistory.length>1){
+    var startTime=new Date(priceHistory[0].time);
+    var endTime=new Date(priceHistory[priceHistory.length-1].time);
+    var mins=Math.round((endTime-startTime)/60000);
+    ctx.fillText(mins>0?mins+'m ago':startTime.toLocaleTimeString(),pad.l,H-5);
+    ctx.fillText('Now',W-pad.r-25,H-5);
+  }
+
+  ctx.fillStyle='#e2e4f0';ctx.font='bold 10px Inter,sans-serif';
+  ctx.fillText('$'+max.toFixed(6),pad.l,pad.t+10);
+  ctx.fillText('$'+min.toFixed(6),pad.l,pad.t+ch);
+
+  var isLastHigh=prices[prices.length-1]>=prices[0];
+  ctx.fillStyle=isLastHigh?'#a6e3a1':'#f38ba8';
+  ctx.font='bold 10px Inter,sans-serif';
+  ctx.fillText('LIVE',W-pad.r-30,pad.t+10);
+  if(priceHistory.length>1){
+    var pctChange=((prices[prices.length-1]-prices[0])/prices[0]*100);
+    ctx.fillText(pctChange>=0?'+':''+pctChange.toFixed(2)+'%',W-pad.r-62,pad.t+22);
+  }
 }
 
 // WHALES
 async function loadWhaleData(){
   if(!currentToken)return;var el=document.getElementById('whaleData');if(!el)return;var card=document.getElementById('whaleCard');
   try{
-    var resp=await fetch('/api/whales/'+encodeURIComponent(currentToken)+'?threshold=500');
+    var resp=await fetch('/api/whales/'+encodeURIComponent(currentToken)+'?threshold=1');
     if(!resp.ok)throw new Error('');var w=await resp.json();
     var tf1=w.timeframes["1h"],tf2=w.timeframes["2h"],tf3=w.timeframes["3h"],tfa=w.timeframes["all"];
 

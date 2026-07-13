@@ -85,10 +85,9 @@ export class HeliusClient {
   async getTokenLargestAccounts(mint: string): Promise<LargestAccount[]> {
     try {
       const result = await this.rpcCall("getTokenLargestAccounts", [mint]);
-      return result.value;
+      return (result?.value || []).slice(0, 80);
     } catch (e) {
-      // Fallback: try getting holders from token program accounts
-      return this.getHoldersFromProgramAccounts(mint);
+      return [];
     }
   }
 
