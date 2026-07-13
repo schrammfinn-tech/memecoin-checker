@@ -20,7 +20,7 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',syste
 .btn-sm{background:rgba(137,220,235,0.08);color:var(--cyan);border:1px solid rgba(137,220,235,0.2);font-weight:600}
 .btn-sm:hover{background:rgba(137,220,235,0.14);border-color:var(--cyan)}
 
-.content{padding:20px 28px 50px;max-width:1160px;margin:0 auto}
+.content{padding:20px 28px 50px;max-width:100%;margin:0 auto}
 .content.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:55vh;text-align:center}
 .content.empty h2{font-size:26px;font-weight:800;color:var(--cyan);margin-bottom:8px}
 .content.empty p{color:var(--muted);font-size:14px;max-width:440px;line-height:1.6}
@@ -121,7 +121,7 @@ function p(v){return(v*100).toFixed(1)+'%';}
 function render(){
   var d=appData,sb=d.scoreBreakdown||{},h=d.holders||[];
   var wh=h.filter(function(x){return!x.isContract&&!x.isDex;});
-  var lp=d.liquidityLock,dev=d.devProfile,bndl=d.bundleDetection,cl=d.clusters||[],social=d.socialResult;
+  var lp=d.liquidityLock,dev=d.devProfile,bndl=d.bundleDetection,cl=d.clusters||[],social=d.socialResult,bot=d.botDetection,bt=d.buyTiming;
   var t10=wh.slice(0,10).reduce(function(s,x){return s+(x.share||0);},0);
   var t3=wh.slice(0,3).reduce(function(s,x){return s+(x.share||0);},0);
   var rc=d.overallRisk;var rcl={'CRITICAL':'X','HIGH':'H','MEDIUM':'M','LOW':'L'}[rc]||'M';
@@ -133,6 +133,21 @@ function render(){
   // RISK HEADER
   html+='<div class="risk-row"><div class="risk-big '+rcl+'">'+rc+'</div><div><span class="badge '+rbg+'">'+rc+' RISK &bull; '+totalRisk+'/100 pts</span><div style="margin-top:6px;font-size:12px;color:var(--muted);">Supply: '+fmt(d.totalSupply||0)+' &bull; Nakamoto: '+(d.scores?.nakamotoCoefficient||0)+' &bull; Gini: '+(d.scores?.giniIndex||0).toFixed(3)+'</div></div></div>';
 
+  // BUY TIMING BANNER
+  if(bt){
+    var isRug=bt.label==='RUGGED';
+    var btc=isRug||bt.label==='YES'?'r':bt.label==='NO'?'g':'r';
+    var bgColor=isRug?'rgba(255,68,68,0.18)':bt.label==='YES'?'rgba(255,68,68,0.12)':bt.label==='NO'?'rgba(166,227,161,0.08)':'rgba(255,68,68,0.06)';
+    var borderColor=isRug?'rgba(255,68,68,0.5)':bt.label==='YES'?'rgba(255,68,68,0.3)':bt.label==='NO'?'rgba(166,227,161,0.2)':'rgba(255,68,68,0.15)';
+    var labelText=isRug?'RUG PULL DETECTED':bt.label==='YES'?'TOO LATE':bt.label==='NO'?'BUY OK':'UNCERTAIN';
+    var textColor=isRug?'var(--red)':'var(--muted)';
+    html+='<div style="background:'+bgColor+';border:1px solid '+borderColor+';border-radius:10px;padding:16px 20px;margin-bottom:14px;display:flex;align-items:center;gap:16px;">';
+    html+='<div style="font-size:32px;font-weight:900;" class="'+btc+'">'+labelText+'</div>';
+    html+='<div style="flex:1;font-size:12px;color:'+textColor+';">';
+    if(bt.reasons.length)html+=bt.reasons.slice(0,3).map(function(r){return'<div style="'+(isRug?'color:var(--red);':'')+'">'+r+'</div>';}).join('');
+    html+='<div style="margin-top:4px;'+(isRug?'color:#ff6666;font-weight:700;':'')+'">Confidence: '+(bt.confidence||0)+'%</div></div></div>';
+  }
+
   // SCORE METRICS
   html+='<div class="metrics">';
   html+=mb('Holders',sb.holderConcentration||0,25,sb.holderConcentration>15?'r':sb.holderConcentration>8?'y':'g');
@@ -141,7 +156,7 @@ function render(){
   html+=mb('Liquidity',sb.liquidityScore||0,15,sb.liquidityScore>10?'r':sb.liquidityScore>5?'y':'g');
   html+=mb('Dev Rep',sb.devReputationScore||0,10,sb.devReputationScore>7?'r':sb.devReputationScore>3?'y':'g');
   html+=mb('Social',sb.socialScore||0,10,sb.socialScore>7?'r':sb.socialScore>3?'y':'g');
-  html+=mb('Snipers',sb.sniperScore||0,10,'b');
+  html+=mb('Bots',sb.botScore||0,10,sb.botScore>7?'r':sb.botScore>3?'y':'g');
   html+='</div>';
 
   // PRICE + CARDS row
@@ -155,6 +170,7 @@ function render(){
   html+='<div class="card c'+(t10>0.5?'r':t10>0.3?'y':'l')+'" onclick="document.getElementById(\'sec-holders\').scrollIntoView({behavior:\'smooth\'})"><h4>Holders</h4><div class="val">'+p(t10)+'</div><div class="sub">Top 10 wallets &bull; '+wh.length+' total wallets</div></div>';
   if(cl.length)html+='<div class="card cy" onclick="document.getElementById(\'sec-clusters\').scrollIntoView({behavior:\'smooth\'})"><h4>Clusters</h4><div class="val y">'+cl.length+'</div><div class="sub">Suspicious wallet groups</div></div>';
   if(social)html+='<div class="card c'+(social.redFlags.length>=3?'r':social.redFlags.length>0?'y':'l')+'" onclick="document.getElementById(\'sec-social\').scrollIntoView({behavior:\'smooth\'})"><h4>Social</h4><div class="val '+(social.redFlags.length>=3?'r':social.redFlags.length>0?'y':'g')+'">'+social.redFlags.length+' flags</div><div class="sub">'+(social.twitter?social.twitter.handle:'')+'</div></div>';
+  if(bot)html+='<div class="card c'+(bot.risk==='HIGH'?'r':bot.risk==='MEDIUM'?'y':'l')+'" onclick="document.getElementById(\'sec-bots\').scrollIntoView({behavior:\'smooth\'})"><h4>Bots</h4><div class="val '+(bot.risk==='HIGH'?'r':bot.risk==='MEDIUM'?'y':'g')+'">'+bot.estimatedBots+'</div><div class="sub">'+bot.risk+' risk &bull; '+(bot.botShareOfHolders*100).toFixed(0)+'% of holders</div></div>';
   html+='<div class="card cc" onclick="document.getElementById(\'sec-whales\').scrollIntoView({behavior:\'smooth\'})"><h4>Whales</h4><div class="val" style="color:var(--cyan);" id="whaleCard">Loading...</div><div class="sub">Entries, exits, accumulation</div></div>';
   html+='</div>';
 
@@ -190,6 +206,22 @@ function render(){
     html+='<div class="stat-row"><span class="sl">Confidence</span><span class="sv '+(bndl.confidence==='HIGH'?'r':bndl.confidence==='MEDIUM'?'y':'g')+'">'+bndl.confidence+'</span></div>';
     html+='<div class="stat-row"><span class="sl">Groups</span><span class="sv">'+bndl.bundleGroups.length+'</span></div>';
     html+='<div class="stat-row"><span class="sl">Supply</span><span class="sv '+(bndl.totalBundleShare>0.15?'r':'y')+'">'+p(bndl.totalBundleShare)+'</span></div>';
+  }else html+='<div style="color:var(--muted);">No data</div>';
+  html+='</div>';
+
+  // BOTS
+  html+='<div class="glass" id="sec-bots"><h3>Bot Detection</h3>';
+  if(bot){
+    html+='<div class="stat-row"><span class="sl">Estimated Bots</span><span class="sv '+(bot.risk==='HIGH'?'r':bot.risk==='MEDIUM'?'y':'g')+'">'+bot.estimatedBots+' wallets</span></div>';
+    html+='<div class="stat-row"><span class="sl">Risk</span><span class="sv '+(bot.risk==='HIGH'?'r':bot.risk==='MEDIUM'?'y':'g')+'">'+bot.risk+'</span></div>';
+    html+='<div class="stat-row"><span class="sl">Bot Share</span><span class="sv">'+(bot.botShareOfHolders*100).toFixed(1)+'% of holders'+(bot.botShareOfSupply>0?' &bull; '+bot.botShareOfSupply.toFixed(1)+'% of supply':'')+'</span></div>';
+    html+='<div class="stat-row"><span class="sl">Dust Wallets</span><span class="sv">'+bot.dustWallets+'</span></div>';
+    if(bot.reasons.length){
+      html+='<div style="margin-top:8px;">';
+      bot.reasons.forEach(function(r){html+='<div class="stat-row"><span class="sl" style="font-size:11px;">'+r+'</span></div>';});
+      html+='</div>';
+    }
+    if(bot.risk==='HIGH')html+='<div style="margin-top:8px;padding:10px;background:rgba(255,68,68,0.08);border-radius:6px;color:#ff4444;font-size:12px;">HIGH bot activity detected — this token likely has bot-farmed holders, inflated holder count, or coordinated bot entries.</div>';
   }else html+='<div style="color:var(--muted);">No data</div>';
   html+='</div>';
 

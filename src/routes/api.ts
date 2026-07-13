@@ -6,6 +6,7 @@ import { comprehensiveAnalyze } from "../lib/risk-engine";
 import { scanSocials } from "../lib/social-scanner";
 import { fetchPriceData } from "../lib/price";
 import { analyzeWhales } from "../lib/whale-monitor";
+import { assessBuyTiming } from "../lib/buy-timing";
 
 export const apiRouter = Router();
 
@@ -28,7 +29,8 @@ apiRouter.get("/check/:tokenAddress", async (req: Request, res: Response) => {
     const helius = getHelius();
     const rpcUrl = getRpc();
     const result = await comprehensiveAnalyze(tokenAddress, helius, rpcUrl);
-    res.json(result);
+    const buyTiming = assessBuyTiming(result);
+    res.json({ ...result, buyTiming });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

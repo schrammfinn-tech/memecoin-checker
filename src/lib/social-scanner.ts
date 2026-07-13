@@ -43,6 +43,11 @@ export interface SocialRedFlag {
 
 const DEXSCREENER = "https://api.dexscreener.com";
 const SOLSCAN = "https://public-api.solscan.io";
+const NITTER_INSTANCES = [
+  "https://nitter.privacydev.net",
+  "https://nitter.poast.org",
+  "https://nitter.net",
+];
 
 export async function scanSocials(tokenAddress: string, deployerAddress?: string): Promise<SocialResult> {
   const result: SocialResult = {
@@ -201,15 +206,25 @@ function scoreTelegram(tg: TelegramAnalysis, flags: SocialRedFlag[]): number {
   return s;
 }
 
+async function fetchNitter(path: string, timeout = 8000): Promise<string | null> {
+  for (const base of NITTER_INSTANCES) {
+    try {
+      const { data } = await axios.get(`${base}${path}`, {
+        timeout,
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "text/html" },
+      });
+      if (data && typeof data === "string" && data.length > 500) return data;
+    } catch { continue; }
+  }
+  return null;
+}
+
 // Search for Twitter handles matching the token name
 async function searchTwitterForToken(tokenName: string): Promise<string | null> {
   try {
     const query = encodeURIComponent(`${tokenName} solana token`);
-    const { data } = await axios.get(`https://nitter.net/search?f=tweets&q=${query}`, {
-      timeout: 8000,
-      headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" },
-    });
-    const html = data as string;
+    const html = await fetchNitter(`/search?f=tweets&q=${query}`);
+    if (!html) return null;
     const handleMatch = html.match(/@(\w{2,30})/);
     return handleMatch ? handleMatch[1] : null;
   } catch {
@@ -234,11 +249,8 @@ async function searchSolscanForTwitter(walletAddress: string): Promise<string | 
 async function searchTwitterForAddress(address: string): Promise<string | null> {
   try {
     const short = address.slice(0, 8);
-    const { data } = await axios.get(`https://nitter.net/search?f=tweets&q=${short}+solana`, {
-      timeout: 8000,
-      headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" },
-    });
-    const html = data as string;
+    const html = await fetchNitter(`/search?f=tweets&q=${short}+solana`);
+    if (!html) return null;
     const handleMatch = html.match(/@(\w{2,30})/);
     return handleMatch ? handleMatch[1] : null;
   } catch {
@@ -255,18 +267,41 @@ async function analyzeTwitter(handleOrUrl: string): Promise<TwitterAnalysis | nu
       else return null;
     }
     handle = handle.replace("@", "").trim();
-    if (!handle || handle.length < 2) return null;
+    if (!handle || handle.length < 2 || handle.length > 30) return null;
 
-    const { data } = await axios.get(`https://nitter.net/${handle}`, {
-      timeout: 10000,
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "text/html" },
-    });
+    let followers = 0;
+    let following = 0;
+    let tweetCount = 0;
+    let verified = false;
+    let joinDate: string | null = null;
+    let likes: number[] = [];
 
-    const html = data as string;
-    const followers = extractNum(html, /(\d[\d,]*)\s*Followers/i);
-    const following = extractNum(html, /(\d[\d,]*)\s*Following/i);
-    const tweetCount = extractNum(html, /(\d[\d,]*)\s*Tweets/i);
-    const verified = html.includes("verified-icon") || html.includes('icon-verified');
+    const html = await fetchNitter(`/${handle}`, 10000);
+
+    if (!html) {
+      return {
+        handle, followers: 0, following: 0, tweetCount: 0,
+        recentEngagement: { avgLikes: 0, avgRetweets: 0, avgComments: 0, engagementRate: 0, sampleSize: 0 },
+        accountAge: null, verified: false, isSuspicious: false, suspicionReasons: [],
+      };
+    }
+
+    followers = extractNum(html, /(\d[\d,]*)\s*Followers/i);
+    following = extractNum(html, /(\d[\d,]*)\s*Following/i);
+    tweetCount = extractNum(html, /(\d[\d,]*)\s*Tweets/i);
+    verified = html.includes("verified-icon") || html.includes("icon-verified");
+
+    const joinMatch = html.match(/Joined\s+(\w+\s+\d{4})/i);
+    if (joinMatch) joinDate = joinMatch[1];
+
+    const likeMatches = html.match(/tweet-stat[^>]*>(\d[\d,]*)/gi) || [];
+    for (const m of likeMatches) {
+      const num = extractNum(m, /(\d[\d,]*)/);
+      if (num > 0 && likes.length < 10) likes.push(num);
+    }
+
+    const avgLikes = likes.length > 0 ? likes.reduce((a, b) => a + b, 0) / likes.length : 0;
+    const engagementRate = followers > 0 ? avgLikes / followers : 0;
 
     const suspicionReasons: string[] = [];
     const lowerHtml = html.toLowerCase();
@@ -276,24 +311,18 @@ async function analyzeTwitter(handleOrUrl: string): Promise<TwitterAnalysis | nu
     if (rugCount >= 3) suspicionReasons.push(`Bio/tweets mention rug safety ${rugCount} times — common rug pull pattern`);
     if (lowerHtml.includes("presale") || lowerHtml.includes("pre-sale")) suspicionReasons.push("Mentions presale — common scam tactic");
 
-    const joinMatch = html.match(/Joined\s+(\w+\s+\d{4})/i);
-    if (joinMatch) {
-      const daysOld = (Date.now() - new Date(joinMatch[1]).getTime()) / 86400000;
+    if (joinDate) {
+      const daysOld = (Date.now() - new Date(joinDate).getTime()) / 86400000;
       if (daysOld < 30) suspicionReasons.push(`Account created ${Math.round(daysOld)} days ago — very new`);
     }
 
-    const likeMatches = html.match(/tweet-stat[^>]*>(\d[\d,]*)/gi) || [];
-    const likes: number[] = [];
-    for (const m of likeMatches) {
-      const num = extractNum(m, /(\d[\d,]*)/);
-      if (num > 0 && likes.length < 10) likes.push(num);
-    }
-
-    const avgLikes = likes.length > 0 ? likes.reduce((a, b) => a + b, 0) / likes.length : 0;
-    const engagementRate = followers > 0 ? avgLikes / followers : 0;
     const isSuspicious = (followers > 5000 && engagementRate < 0.005) || (followers > 20000 && engagementRate < 0.002) || suspicionReasons.length > 0;
 
-    return { handle, followers, following, tweetCount, recentEngagement: { avgLikes, avgRetweets: 0, avgComments: 0, engagementRate, sampleSize: likes.length }, accountAge: joinMatch ? joinMatch[1] : null, verified, isSuspicious, suspicionReasons };
+    return {
+      handle, followers, following, tweetCount,
+      recentEngagement: { avgLikes, avgRetweets: 0, avgComments: 0, engagementRate, sampleSize: likes.length },
+      accountAge: joinDate, verified, isSuspicious, suspicionReasons,
+    };
   } catch { return null; }
 }
 

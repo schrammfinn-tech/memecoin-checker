@@ -6,6 +6,7 @@ import { detectBundledLaunch, BundleDetectionResult } from "./bundle-detector";
 import { getDevProfile, DevProfile } from "./dev-history";
 import { analyzeLiquidityLock, LiquidityLockResult } from "./liquidity";
 import { scanSocials, SocialResult } from "./social-scanner";
+import { detectBots, BotDetectResult } from "./bot-detector";
 
 export interface ComprehensiveRisk {
   overallRisk: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -15,12 +16,13 @@ export interface ComprehensiveRisk {
     bundleScore: number;
     liquidityScore: number;
     devReputationScore: number;
-    sniperScore: number;
+    botScore: number;
     socialScore: number;
   };
   holders: HolderInfo[];
   clusters: WalletCluster[];
   bundleDetection: BundleDetectionResult | null;
+  botDetection: BotDetectResult | null;
   liquidityLock: LiquidityLockResult | null;
   devProfile: DevProfile | null;
   socialResult: SocialResult | null;
@@ -39,6 +41,8 @@ export async function comprehensiveAnalyze(
   const onChain = await helius.analyzeToken(tokenAddress);
   const holders = onChain.holders;
   const totalSupply = onChain.totalSupply || holders.reduce((s, h) => s + h.amount, 0);
+
+  const botResult = detectBots(holders, totalSupply);
 
   // Run heavy RPC features sequentially to avoid rate limits
   let clustersRaw: any = { status: "rejected", reason: "skipped" };
@@ -165,8 +169,8 @@ export async function comprehensiveAnalyze(
   }
   const devReputationScore = Math.min(10, devScore);
 
-  // 6. Sniper Score (0-10 points)
-  const sniperScore = 0;
+  // 6. Bot Score (0-10 points)
+  const botDetectionScore = botResult.riskScore;
 
   // 7. Social Score (0-10 points)
   let socialScore = 0;
@@ -180,7 +184,7 @@ export async function comprehensiveAnalyze(
   const socialMediaScore = Math.min(10, socialScore);
 
   const totalScore = holderConcentrationScore + clusteringScore + bundleDetectionScore +
-    liquidityLockScore + devReputationScore + sniperScore + socialMediaScore;
+    liquidityLockScore + devReputationScore + botDetectionScore + socialMediaScore;
 
   let overallRisk: ComprehensiveRisk["overallRisk"] = "LOW";
   if (totalScore >= 65) overallRisk = "CRITICAL";
@@ -195,12 +199,13 @@ export async function comprehensiveAnalyze(
       bundleScore: bundleDetectionScore,
       liquidityScore: liquidityLockScore,
       devReputationScore,
-      sniperScore,
+      botScore: botDetectionScore,
       socialScore: socialMediaScore,
     },
     holders,
     clusters: significantClusters,
     bundleDetection: bundleResultVal,
+    botDetection: botResult,
     liquidityLock: liquidityResultVal,
     devProfile: devProfileVal,
     socialResult: socialResultVal,
@@ -221,7 +226,7 @@ export function formatRiskExplanation(result: ComprehensiveRisk): string {
   lines.push(`  Bundle Detection:     ${sb.bundleScore}/20`);
   lines.push(`  Liquidity Lock:       ${sb.liquidityScore}/15`);
   lines.push(`  Dev Reputation:       ${sb.devReputationScore}/10`);
-  lines.push(`  Sniper Activity:      ${sb.sniperScore}/10`);
+  lines.push(`  Bot Activity:         ${sb.botScore}/10`);
 
   if (result.liquidityLock) {
     lines.push("");

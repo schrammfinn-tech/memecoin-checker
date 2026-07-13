@@ -27,16 +27,23 @@ export async function getDevProfile(
 ): Promise<DevProfile | null> {
   try {
     const mint = new PublicKey(tokenAddress);
-    const sigs = await connection.getSignaturesForAddress(mint, { limit: 50 });
-    if (sigs.length === 0) return null;
+    const sigs = await connection.getSignaturesForAddress(mint, { limit: 100 });
+    if (!sigs || sigs.length === 0) return null;
 
-    const lastSig = sigs[sigs.length - 1];
-    const firstTx = await connection.getParsedTransaction(lastSig.signature, {
-      maxSupportedTransactionVersion: 0,
-    });
-    if (!firstTx) return null;
+    let deployer: string | null = null;
+    const checkSigs = sigs.slice(-15);
 
-    const deployer = findDeployer(firstTx, tokenAddress);
+    for (const sigInfo of checkSigs) {
+      try {
+        const tx = await connection.getParsedTransaction(sigInfo.signature, {
+          maxSupportedTransactionVersion: 0,
+        });
+        if (!tx) continue;
+        deployer = findDeployer(tx, tokenAddress);
+        if (deployer) break;
+      } catch { continue; }
+    }
+
     if (!deployer) return null;
 
     const deployerPubkey = new PublicKey(deployer);
@@ -97,22 +104,30 @@ export async function getDevProfile(
 
 function findDeployer(tx: any, tokenAddress: string): string | null {
   try {
+    const accountKeys = tx.transaction.message.accountKeys;
+    if (Array.isArray(accountKeys)) {
+      for (const ak of accountKeys) {
+        if (ak.signer) {
+          const key = typeof ak.pubkey === "string" ? ak.pubkey : ak.pubkey?.toBase58?.();
+          if (key && key.length >= 40 && key !== PUMP_FUN_PROGRAM && key !== RAYDIUM_AMM) {
+            return key;
+          }
+        }
+      }
+    }
+
     const postBalances = tx.meta?.postTokenBalances ?? [];
     for (const b of postBalances) {
       if (b.mint === tokenAddress && b.owner && b.uiTokenAmount?.uiAmount > 0) {
         if (
           b.owner !== PUMP_FUN_PROGRAM &&
           b.owner !== RAYDIUM_AMM &&
-          b.owner.length < 44
+          b.owner.length >= 40
         ) {
           return b.owner;
         }
       }
     }
-
-    const accountKeys = tx.transaction.message.getAccountKeys();
-    const key0 = accountKeys.get(0);
-    if (key0 && key0.toString().length < 44) return key0.toString();
 
     return null;
   } catch {

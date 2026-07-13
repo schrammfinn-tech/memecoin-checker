@@ -56,6 +56,7 @@ function createWindow(port: number) {
     title: "Memecoin Checker",
     backgroundColor: "#0a0a0f",
     show: false,
+    fullscreenable: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -65,6 +66,7 @@ function createWindow(port: number) {
   });
 
   mainWindow.setMenuBarVisibility(false);
+  mainWindow.maximize();
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);

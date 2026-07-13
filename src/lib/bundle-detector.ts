@@ -20,25 +20,64 @@ export interface BundleDetectionResult {
 
 const PUMP_FUN = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 
+function findCommonFunder(
+  windowEvents: { buyer: string; feePayer: string }[]
+): string | null {
+  const payerBuyers = new Map<string, Set<string>>();
+  for (const e of windowEvents) {
+    if (!payerBuyers.has(e.feePayer)) {
+      payerBuyers.set(e.feePayer, new Set());
+    }
+    payerBuyers.get(e.feePayer)!.add(e.buyer);
+  }
+  for (const [payer, buyers] of payerBuyers) {
+    if (buyers.size >= 2) return payer;
+  }
+  return null;
+}
+
 export async function detectBundledLaunch(
   connection: Connection,
   tokenAddress: string,
   totalSupply: number
 ): Promise<BundleDetectionResult> {
-  const mint = new PublicKey(tokenAddress);
-  const sigs = await connection.getSignaturesForAddress(mint, { limit: 60 });
+  const emptyResult = (): BundleDetectionResult => ({
+    isBundled: false,
+    confidence: "NONE",
+    bundleGroups: [],
+    totalBundleShare: 0,
+    firstBuyTimestamp: 0,
+    uniqueFunders: 0,
+  });
+
+  let sigs: Array<{ signature: string; blockTime?: number | null }> = [];
+  try {
+    const mint = new PublicKey(tokenAddress);
+    sigs = await connection.getSignaturesForAddress(mint, { limit: 60 });
+  } catch {
+    return emptyResult();
+  }
+
+  if (!sigs || sigs.length === 0) return emptyResult();
 
   const batchSize = 5;
-  const buyEvents: { buyer: string; timestamp: number; amount: number; signature: string }[] = [];
+  const buyEvents: { buyer: string; timestamp: number; amount: number; signature: string; feePayer: string }[] = [];
 
   for (let i = 0; i < Math.min(sigs.length, 40); i += batchSize) {
     const batch = sigs.slice(i, i + batchSize);
     await new Promise((r) => setTimeout(r, 400));
 
-    const txs = await connection.getParsedTransactions(
-      batch.map((s) => s.signature),
-      { maxSupportedTransactionVersion: 0 }
-    );
+    let txs: Awaited<ReturnType<Connection["getParsedTransactions"]>> = [];
+    try {
+      txs = await connection.getParsedTransactions(
+        batch.map((s) => s.signature),
+        { maxSupportedTransactionVersion: 0 }
+      );
+    } catch {
+      continue;
+    }
+
+    if (!txs) continue;
 
     for (const tx of txs) {
       if (!tx || !tx.meta || tx.meta.err || !tx.blockTime) continue;
@@ -58,11 +97,19 @@ export async function detectBundledLaunch(
         const diff = postAmount - preAmount;
 
         if (diff > 0.000001 && post.owner && post.owner !== PUMP_FUN) {
+          let feePayer = post.owner;
+          try {
+            const acctKeys = tx.transaction.message.accountKeys;
+            for (const ak of acctKeys) {
+              if ((ak as any).signer) { feePayer = (ak as any).pubkey?.toBase58?.() ?? post.owner; break; }
+            }
+          } catch (_) { /* fallback to owner */ }
           buyEvents.push({
             buyer: post.owner,
             timestamp: tx.blockTime * 1000,
             amount: diff,
             signature: tx.transaction.signatures[0],
+            feePayer,
           });
         }
       }
@@ -98,20 +145,24 @@ export async function detectBundledLaunch(
       (e) => e.timestamp >= timeStart && e.timestamp <= timeEnd && !assigned.has(e.buyer)
     );
 
-    if (windowEvents.length >= minWalletsInBundle) {
-      const wallets = windowEvents.map((e) => e.buyer);
-      const amounts = windowEvents.map((e) => e.amount);
+    const uniqueBuyers = new Map<string, number>();
+    for (const e of windowEvents) {
+      uniqueBuyers.set(e.buyer, (uniqueBuyers.get(e.buyer) ?? 0) + e.amount);
+    }
+
+    if (uniqueBuyers.size >= minWalletsInBundle) {
+      const wallets = [...uniqueBuyers.keys()];
+      const amounts = [...uniqueBuyers.values()];
       const totalAmount = amounts.reduce((s, a) => s + a, 0);
 
-      const uniqueWalletSet = new Set(wallets);
-      const sameBlock = windowEvents.length > 1 &&
-        Math.max(...windowEvents.map((e) => e.timestamp)) -
-        Math.min(...windowEvents.map((e) => e.timestamp)) < 1000;
+      const timestamps = windowEvents.map((e) => e.timestamp);
+      const sameBlock = uniqueBuyers.size > 1 &&
+        Math.max(...timestamps) - Math.min(...timestamps) < 2000;
 
-      let commonFunder: string | null = null;
+      let commonFunder = findCommonFunder(windowEvents);
 
       bundleGroups.push({
-        wallets: [...uniqueWalletSet],
+        wallets: [...uniqueBuyers.keys()],
         buyTimestamp: timeStart,
         buyAmounts: amounts,
         sameBlock,
@@ -119,7 +170,7 @@ export async function detectBundledLaunch(
         tokenAmount: totalAmount,
       });
 
-      for (const w of uniqueWalletSet) assigned.add(w);
+      for (const w of uniqueBuyers.keys()) assigned.add(w);
     }
   }
 

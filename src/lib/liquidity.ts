@@ -15,6 +15,12 @@ export interface LiquidityLockResult {
   pairAddress: string | null;
   liquidityUsd: number;
   dexName: string | null;
+  priceUsd: number;
+  priceChange24h: number;
+  volume24h: number;
+  txns24hBuys: number;
+  txns24hSells: number;
+  pairCreatedAt: number;
 }
 
 export async function analyzeLiquidityLock(
@@ -36,6 +42,8 @@ export async function analyzeLiquidityLock(
         topLPHolderShare: 0, deployerHoldsLP: false,
         status: "NO_LP", risk: "VERY_HIGH",
         pairAddress: null, liquidityUsd: 0, dexName: null,
+        priceUsd: 0, priceChange24h: 0, volume24h: 0,
+        txns24hBuys: 0, txns24hSells: 0, pairCreatedAt: 0,
       };
     }
 
@@ -46,6 +54,12 @@ export async function analyzeLiquidityLock(
     const liquidityUsd = best.liquidity?.usd || 0;
     const pairAddress = best.pairAddress || null;
     const dexName = best.dexId || best.labels?.[0] || null;
+    const priceUsd = parseFloat(best.priceUsd) || 0;
+    const priceChange24h = best.priceChange?.h24 ?? 0;
+    const volume24h = best.volume?.h24 ?? 0;
+    const txns24hBuys = best.txns?.h24?.buys ?? 0;
+    const txns24hSells = best.txns?.h24?.sells ?? 0;
+    const pairCreatedAt = best.pairCreatedAt ?? 0;
 
     // Check if LP is burned/locked via DexScreener data when available
     // For Pump.fun: tokens that graduated show LP burned
@@ -56,9 +70,17 @@ export async function analyzeLiquidityLock(
     let burnedPercent = 0;
 
     // DexScreener sometimes indicates LP status
-    if (liquidityUsd > 0) {
-      // Most Raydium pools have LP burned
-      if (dexName?.toLowerCase().includes("raydium")) {
+    if (liquidityUsd <= 1) {
+      status = "NO_LP";
+      risk = "VERY_HIGH";
+    } else if (liquidityUsd > 0) {
+      if (liquidityUsd < 50) {
+        status = "UNLOCKED";
+        risk = "VERY_HIGH";
+      } else if (liquidityUsd < 500) {
+        status = "UNLOCKED";
+        risk = "HIGH";
+      } else if (dexName?.toLowerCase().includes("raydium")) {
         // Raydium pools typically have LP tokens burned
         burnedPercent = 0.95;
         status = "BURNED";
@@ -102,6 +124,12 @@ export async function analyzeLiquidityLock(
       pairAddress,
       liquidityUsd,
       dexName,
+      priceUsd,
+      priceChange24h,
+      volume24h,
+      txns24hBuys,
+      txns24hSells,
+      pairCreatedAt,
     };
   } catch {
     return {
@@ -110,6 +138,8 @@ export async function analyzeLiquidityLock(
       topLPHolderShare: 0, deployerHoldsLP: false,
       status: "ERROR", risk: "VERY_HIGH",
       pairAddress: null, liquidityUsd: 0, dexName: null,
+      priceUsd: 0, priceChange24h: 0, volume24h: 0,
+      txns24hBuys: 0, txns24hSells: 0, pairCreatedAt: 0,
     };
   }
 }
