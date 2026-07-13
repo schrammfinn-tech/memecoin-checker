@@ -100,7 +100,8 @@ async function analyze(){
   var addr=document.getElementById('tokenInput').value.trim();if(!addr)return;
   currentToken=addr;appData=null;priceInfo=null;
   var c=document.getElementById('content');c.className='content';
-  c.innerHTML='<div class="loading"><div class="spinner"></div><br><span style="font-size:13px;">Analyzing token data...</span></div>';
+  c.style.animation='none';c.offsetHeight;c.style.animation='fadeIn 0.3s ease';
+  c.innerHTML='<div class="loading"><div class="spinner"></div><br><span style="font-size:14px;">Analyzing</span><br><span class="mono" style="font-size:12px;">'+addr.slice(0,16)+'...</span></div>';
   document.getElementById('analyzeBtn').disabled=true;
 
   try{
@@ -108,7 +109,8 @@ async function analyze(){
     if(!resp.ok){var e=await resp.json();throw new Error(e.error);}
     appData=await resp.json();
     document.getElementById('sniperBtn').style.display='inline-block';
-    render();
+    c.style.opacity='0';c.style.transition='opacity 0.15s';
+    setTimeout(function(){c.style.opacity='1';render();},100);
   }catch(err){c.innerHTML='<div class="error">'+err.message+'</div>';}
   finally{document.getElementById('analyzeBtn').disabled=false;}
 }
@@ -322,24 +324,29 @@ async function loadPriceData(){
 async function loadWhaleData(){
   if(!currentToken)return;var el=document.getElementById('whaleData');if(!el)return;var card=document.getElementById('whaleCard');
   try{
-    var resp=await fetch('/api/whales/'+encodeURIComponent(currentToken)+'?threshold=500&hours=1');
+    var resp=await fetch('/api/whales/'+encodeURIComponent(currentToken)+'?threshold=500');
     if(!resp.ok)throw new Error('');var w=await resp.json();
-    var ns=w.netAccumulationUsd>=0?'+':'',nc=w.netAccumulationUsd>=0?'g':'r';
-    if(card)card.innerHTML=ns+'$'+fmt(Math.abs(w.netAccumulationUsd||0))+' <span style="font-size:11px;" class="'+nc+'">'+ns+'</span>';
+    var tf1=w.timeframes["1h"],tf2=w.timeframes["2h"],tf3=w.timeframes["3h"],tfa=w.timeframes["all"];
 
-    el.innerHTML=
-      '<div class="metrics" style="margin-bottom:8px;">'+
-        '<div class="met"><div class="l">Entering</div><div class="v g">'+w.whalesEntering+'</div></div>'+
-        '<div class="met"><div class="l">Exiting</div><div class="v r">'+w.whalesExiting+'</div></div>'+
-        '<div class="met"><div class="l">Net Accum.</div><div class="v '+nc+'">'+ns+'$'+fmt(Math.abs(w.netAccumulationUsd||0))+'</div></div>'+
-        '<div class="met"><div class="l">Volume</div><div class="v">$'+fmt(w.totalWhaleVolume||0)+'</div></div>'+
-        '<div class="met"><div class="l">Largest Sell</div><div class="v r">'+(w.largestSell?'$'+fmt(w.largestSell.valueUsd||0):'-')+'</div></div>'+
-        '<div class="met"><div class="l">Bot Wallets</div><div class="v '+(w.botOwnershipPercent>30?'r':'y')+'">'+w.botWallets+' ('+(w.botOwnershipPercent||0).toFixed(0)+'%)</div></div>'+
-      '</div>';
-    if(w.enteringDetails&&w.enteringDetails.length)el.innerHTML+='<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">Recent Entries</div>'+w.enteringDetails.slice(0,3).map(function(a){return'<div class="stat-row"><span class="mono">'+a.address.slice(0,20)+'...</span><span class="g">+'+fmt(a.amount)+'</span></div>';}).join('');
-    if(w.exitingDetails&&w.exitingDetails.length)el.innerHTML+='<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:8px 0 6px;">Recent Exits</div>'+w.exitingDetails.slice(0,3).map(function(a){return'<div class="stat-row"><span class="mono">'+a.address.slice(0,20)+'...</span><span class="r">-'+fmt(a.amount)+'</span></div>';}).join('');
-    if(!w.whalesEntering&&!w.whalesExiting)el.innerHTML='<div style="color:var(--muted);">No whale activity in the last hour</div>';
+    var net1=tf1.netAccumulationUsd,ns=net1>=0?'+':'',nc=net1>=0?'g':'r';
+    if(card)card.innerHTML=ns+'$'+fmt(Math.abs(net1||0))+' <span style="font-size:11px;" class="'+nc+'">'+ns+'</span>';
+
+    el.innerHTML='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;">'+
+      tfRow('1 Hour',tf1)+tfRow('2 Hours',tf2)+tfRow('3 Hours',tf3)+tfRow('All Time',tfa)+
+    '</div>';
+    if(tf1.enteringDetails&&tf1.enteringDetails.length)el.innerHTML+='<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px;">Recent Whale Entries (1h)</div>'+tf1.enteringDetails.slice(0,3).map(function(a){return'<div class="stat-row"><span class="mono">'+a.address.slice(0,20)+'...</span><span class="g">+'+fmt(a.amount)+'</span></div>';}).join('');
+    if(tf1.exitingDetails&&tf1.exitingDetails.length)el.innerHTML+='<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:8px 0 4px;">Recent Whale Exits (1h)</div>'+tf1.exitingDetails.slice(0,3).map(function(a){return'<div class="stat-row"><span class="mono">'+a.address.slice(0,20)+'...</span><span class="r">-'+fmt(a.amount)+'</span></div>';}).join('');
   }catch(e){el.innerHTML='<div style="color:var(--muted);">Whale data unavailable</div>';if(card)card.innerHTML='N/A';}
+}
+
+function tfRow(label,tf){
+  var ns=tf.netAccumulationUsd>=0?'+':'',nc=tf.netAccumulationUsd>=0?'g':'r';
+  return'<div style="background:rgba(255,255,255,0.02);border-radius:6px;padding:10px;">'+
+    '<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">'+label+'</div>'+
+    '<div style="font-size:13px;font-weight:700;"><span class="g">'+tf.whalesEntering+' in</span> / <span class="r">'+tf.whalesExiting+' out</span></div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:2px;">Net <span class="'+nc+'">'+ns+'$'+fmt(Math.abs(tf.netAccumulationUsd||0))+'</span></div>'+
+    '<div style="font-size:10px;color:var(--muted);">Sell: '+(tf.largestSell?'$'+fmt(tf.largestSell.valueUsd||0):'-')+' &bull; Bots: '+tf.botWallets+'</div>'+
+  '</div>';
 }
 
 // SNIPERS

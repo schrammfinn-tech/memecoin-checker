@@ -80,7 +80,6 @@ apiRouter.get("/whales/:tokenAddress", async (req: Request, res: Response) => {
     const connection = createConnection(rpcUrl);
 
     const threshold = parseFloat(req.query.threshold as string) || 500;
-    const hours = parseInt(req.query.hours as string) || 1;
 
     let priceUsd = 0;
     try {
@@ -88,13 +87,22 @@ apiRouter.get("/whales/:tokenAddress", async (req: Request, res: Response) => {
       priceUsd = priceData?.priceUsd ?? 0;
     } catch {}
 
-    const result = await analyzeWhales(connection, tokenAddress, priceUsd, threshold, hours);
+    const result = await analyzeWhales(connection, tokenAddress, priceUsd, threshold);
     res.json(result);
   } catch (err: any) {
     res.json({
-      whalesEntering: 0, whalesExiting: 0, enteringDetails: [], exitingDetails: [],
-      largestSell: null, netAccumulation: 0, netAccumulationUsd: 0,
-      totalWhaleVolume: 0, botOwnershipPercent: 0, botWallets: 0, totalWalletsTracked: 0,
+      timeframes: {
+        "1h": emptyTF(), "2h": emptyTF(), "3h": emptyTF(), "all": emptyTF()
+      },
+      totalWalletsTracked: 0,
     });
   }
 });
+
+function emptyTF() {
+  return {
+    whalesEntering: 0, whalesExiting: 0, enteringDetails: [], exitingDetails: [],
+    largestSell: null, netAccumulation: 0, netAccumulationUsd: 0,
+    totalWhaleVolume: 0, botOwnershipPercent: 0, botWallets: 0,
+  };
+}

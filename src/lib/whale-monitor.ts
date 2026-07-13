@@ -10,6 +10,16 @@ export interface WhaleActivity {
 }
 
 export interface WhaleReport {
+  timeframes: {
+    "1h": WhaleTimeframe;
+    "2h": WhaleTimeframe;
+    "3h": WhaleTimeframe;
+    "all": WhaleTimeframe;
+  };
+  totalWalletsTracked: number;
+}
+
+export interface WhaleTimeframe {
   whalesEntering: number;
   whalesExiting: number;
   enteringDetails: WhaleActivity[];
@@ -20,7 +30,6 @@ export interface WhaleReport {
   totalWhaleVolume: number;
   botOwnershipPercent: number;
   botWallets: number;
-  totalWalletsTracked: number;
 }
 
 const PUMP_FUN = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
@@ -30,121 +39,120 @@ export async function analyzeWhales(
   connection: Connection,
   tokenAddress: string,
   priceUsd: number,
-  whaleThresholdUsd = 500,
-  lookbackHours = 1
+  whaleThresholdUsd = 500
 ): Promise<WhaleReport> {
   const mint = new PublicKey(tokenAddress);
-  const lookbackTime = Date.now() - lookbackHours * 3600000;
+  const now = Date.now();
 
-  const sigs = await connection.getSignaturesForAddress(mint, { limit: 30 });
+  const sigs = await connection.getSignaturesForAddress(mint, { limit: 50 });
 
-  const activities: WhaleActivity[] = [];
+  const allActivities: WhaleActivity[] = [];
   const batchSize = 3;
 
-  for (let i = 0; i < Math.min(sigs.length, 15); i += batchSize) {
+  for (let i = 0; i < Math.min(sigs.length, 30); i += batchSize) {
     const batch = sigs.slice(i, i + batchSize);
     await new Promise((r) => setTimeout(r, 300));
 
-    const txs = await connection.getParsedTransactions(
-      batch.map((s) => s.signature),
-      { maxSupportedTransactionVersion: 0 }
-    );
+    try {
+      const txs = await connection.getParsedTransactions(
+        batch.map((s) => s.signature),
+        { maxSupportedTransactionVersion: 0 }
+      );
 
-    for (const tx of txs) {
-      if (!tx || !tx.meta || tx.meta.err || !tx.blockTime) continue;
-      const timestamp = tx.blockTime * 1000;
-      if (timestamp < lookbackTime) continue;
+      for (const tx of txs) {
+        if (!tx || !tx.meta || tx.meta.err || !tx.blockTime) continue;
+        const timestamp = tx.blockTime * 1000;
 
-      const preBalances = tx.meta.preTokenBalances ?? [];
-      const postBalances = tx.meta.postTokenBalances ?? [];
+        const preBalances = tx.meta.preTokenBalances ?? [];
+        const postBalances = tx.meta.postTokenBalances ?? [];
 
-      for (let j = 0; j < postBalances.length; j++) {
-        const post = postBalances[j];
-        if (post.mint !== tokenAddress) continue;
+        for (let j = 0; j < postBalances.length; j++) {
+          const post = postBalances[j];
+          if (post.mint !== tokenAddress) continue;
 
-        const pre = preBalances.find(
-          (p) => p.accountIndex === post.accountIndex && p.mint === tokenAddress
-        );
+          const pre = preBalances.find(
+            (p) => p.accountIndex === post.accountIndex && p.mint === tokenAddress
+          );
 
-        const preAmount = pre?.uiTokenAmount?.uiAmount ?? 0;
-        const postAmount = post.uiTokenAmount?.uiAmount ?? 0;
-        const diff = postAmount - preAmount;
-        const absDiff = Math.abs(diff);
+          const preAmount = pre?.uiTokenAmount?.uiAmount ?? 0;
+          const postAmount = post.uiTokenAmount?.uiAmount ?? 0;
+          const diff = postAmount - preAmount;
+          const absDiff = Math.abs(diff);
 
-        const valueUsd = priceUsd > 0 ? absDiff * priceUsd : 0;
+          const valueUsd = priceUsd > 0 ? absDiff * priceUsd : 0;
+          if (valueUsd < whaleThresholdUsd || absDiff < 0.000001) continue;
 
-        if (valueUsd < whaleThresholdUsd || absDiff < 0.000001) continue;
+          const owner = post.owner ?? pre?.owner ?? "unknown";
+          if (owner === PUMP_FUN || owner === "unknown" || owner.length > 44) continue;
 
-        const owner = post.owner ?? pre?.owner ?? "unknown";
-        if (owner === PUMP_FUN || owner === "unknown" || owner.length > 44) continue;
-
-        activities.push({
-          address: owner,
-          type: diff > 0 ? "entry" : "exit",
-          amount: absDiff,
-          valueUsd,
-          timestamp,
-          signature: tx.transaction.signatures[0],
-        });
+          allActivities.push({
+            address: owner,
+            type: diff > 0 ? "entry" : "exit",
+            amount: absDiff,
+            valueUsd,
+            timestamp,
+            signature: tx.transaction.signatures[0],
+          });
+        }
       }
-    }
+    } catch {}
   }
 
-  activities.sort((a, b) => b.timestamp - a.timestamp);
+  allActivities.sort((a, b) => b.timestamp - a.timestamp);
 
-  const entering = activities.filter((a) => a.type === "entry");
-  const exiting = activities.filter((a) => a.type === "exit");
+  const computeTimeframe = (hours: number): WhaleTimeframe => {
+    const cutoff = now - hours * 3600000;
+    const relevant = allActivities.filter((a) => a.timestamp >= cutoff);
 
-  const uniqueEntering = new Set(entering.map((a) => a.address));
-  const uniqueExiting = new Set(exiting.map((a) => a.address));
-  const allWhaleAddresses = new Set(activities.map((a) => a.address));
+    const entering = relevant.filter((a) => a.type === "entry");
+    const exiting = relevant.filter((a) => a.type === "exit");
 
-  let totalIn = entering.reduce((s, a) => s + a.amount, 0);
-  let totalOut = exiting.reduce((s, a) => s + a.amount, 0);
-  const netAccumulation = totalIn - totalOut;
-  const netAccumulationUsd = priceUsd > 0 ? netAccumulation * priceUsd : 0;
+    const uniqueEntering = new Set(entering.map((a) => a.address));
+    const uniqueExiting = new Set(exiting.map((a) => a.address));
 
-  let largestSell: WhaleActivity | null = null;
-  for (const a of exiting) {
-    if (!largestSell || a.valueUsd > largestSell.valueUsd) {
-      largestSell = a;
+    const totalIn = entering.reduce((s, a) => s + a.amount, 0);
+    const totalOut = exiting.reduce((s, a) => s + a.amount, 0);
+
+    let largestSell: WhaleActivity | null = null;
+    for (const a of exiting) {
+      if (!largestSell || a.valueUsd > largestSell.valueUsd) largestSell = a;
     }
-  }
 
-  const totalWhaleVolume = totalIn + totalOut;
-
-  // Bot detection: wallets that bought similar amounts at similar timestamps
-  let botWallets = 0;
-  const botCandidates = new Set<string>();
-
-  const entryAddresses = entering.map((a) => a.address);
-  for (let i = 0; i < entering.length; i++) {
-    for (let j = i + 1; j < Math.min(entering.length, i + 20); j++) {
-      if (
-        Math.abs(entering[i].timestamp - entering[j].timestamp) < 3000 &&
-        Math.abs(entering[i].amount - entering[j].amount) / Math.max(entering[i].amount, entering[j].amount) < 0.1
-      ) {
-        botCandidates.add(entering[i].address);
-        botCandidates.add(entering[j].address);
+    const botEntries = entering.filter((a, i) => {
+      for (let j = i + 1; j < Math.min(entering.length, i + 10); j++) {
+        if (Math.abs(a.timestamp - entering[j].timestamp) < 3000 &&
+            Math.abs(a.amount - entering[j].amount) / Math.max(a.amount, entering[j].amount, 0.001) < 0.1) {
+          return true;
+        }
       }
-    }
-  }
-  botWallets = botCandidates.size;
-  const botOwnershipPercent = allWhaleAddresses.size > 0
-    ? (botWallets / allWhaleAddresses.size) * 100
-    : 0;
+      return false;
+    });
+    const botWallets = new Set(botEntries.map((a) => a.address)).size;
+    const allAddresses = new Set(relevant.map((a) => a.address));
+
+    return {
+      whalesEntering: uniqueEntering.size,
+      whalesExiting: uniqueExiting.size,
+      enteringDetails: entering.slice(0, 10),
+      exitingDetails: exiting.slice(0, 10),
+      largestSell,
+      netAccumulation: totalIn - totalOut,
+      netAccumulationUsd: priceUsd > 0 ? (totalIn - totalOut) * priceUsd : 0,
+      totalWhaleVolume: totalIn + totalOut,
+      botOwnershipPercent: allAddresses.size > 0 ? (botWallets / allAddresses.size) * 100 : 0,
+      botWallets,
+    };
+  };
+
+  const allAddresses = new Set(allActivities.map((a) => a.address));
 
   return {
-    whalesEntering: uniqueEntering.size,
-    whalesExiting: uniqueExiting.size,
-    enteringDetails: entering.slice(0, 15),
-    exitingDetails: exiting.slice(0, 15),
-    largestSell,
-    netAccumulation,
-    netAccumulationUsd,
-    totalWhaleVolume,
-    botOwnershipPercent: Math.min(100, botOwnershipPercent),
-    botWallets,
-    totalWalletsTracked: allWhaleAddresses.size,
+    timeframes: {
+      "1h": computeTimeframe(1),
+      "2h": computeTimeframe(2),
+      "3h": computeTimeframe(3),
+      "all": computeTimeframe(72), // up to 3 days
+    },
+    totalWalletsTracked: allAddresses.size,
   };
 }
