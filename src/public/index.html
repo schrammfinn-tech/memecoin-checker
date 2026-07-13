@@ -79,10 +79,11 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',syste
 </head>
 <body>
 <div class="top">
-  <h1>MEMECOIN CHECKER</h1>
+  <h1 id="topTitle">MEMECOIN CHECKER</h1>
   <input type="text" id="tokenInput" placeholder="Enter Solana token address..." />
   <button class="btn-cyan" id="analyzeBtn" onclick="analyze()">ANALYZE</button>
   <button class="btn-sm" id="sniperBtn" onclick="scanSnipers()" style="display:none">SNIPERS</button>
+  <span id="tokenName" style="font-size:13px;color:var(--muted);display:none;"></span>
 </div>
 
 <div class="content empty" id="content">
@@ -247,6 +248,11 @@ async function loadPriceData(){
     if(!p||!p.pairAddress){el.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted);">No DEX pair found for this token</div>';return;}
 
     var link=document.getElementById('dexLink');if(link){link.style.display='inline';link.href=p.url||'#';}
+    // Show token name
+    if(p.tokenName){
+      var tn=document.getElementById('tokenName');tn.style.display='inline';tn.textContent=p.tokenName+(p.tokenSymbol?' ($'+p.tokenSymbol+')':'');
+      document.getElementById('topTitle').textContent=p.tokenName||'MEMECOIN CHECKER';
+    }
 
     var cs=p.priceChange24h>=0?'g':'r';
     var arrow=p.priceChange24h>=0?'&#9650;':'&#9660;';

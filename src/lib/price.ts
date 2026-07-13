@@ -6,6 +6,8 @@ export interface PriceData {
   pairAddress: string;
   chain: string;
   dex: string;
+  tokenName: string;
+  tokenSymbol: string;
   priceUsd: number;
   priceChange1h: number;
   priceChange6h: number;
@@ -35,6 +37,8 @@ export async function fetchPriceData(tokenAddress: string): Promise<PriceData | 
       pairAddress: best.pairAddress || "",
       chain: best.chainId || "solana",
       dex: best.dexId || "unknown",
+      tokenName: best.baseToken?.name || "",
+      tokenSymbol: best.baseToken?.symbol || "",
       priceUsd: parseFloat(best.priceUsd) || 0,
       priceChange1h: best.priceChange?.h1 ?? 0,
       priceChange6h: best.priceChange?.h6 ?? 0,

@@ -36,12 +36,12 @@ export async function analyzeWhales(
   const mint = new PublicKey(tokenAddress);
   const lookbackTime = Date.now() - lookbackHours * 3600000;
 
-  const sigs = await connection.getSignaturesForAddress(mint, { limit: 80 });
+  const sigs = await connection.getSignaturesForAddress(mint, { limit: 30 });
 
   const activities: WhaleActivity[] = [];
-  const batchSize = 5;
+  const batchSize = 3;
 
-  for (let i = 0; i < Math.min(sigs.length, 50); i += batchSize) {
+  for (let i = 0; i < Math.min(sigs.length, 15); i += batchSize) {
     const batch = sigs.slice(i, i + batchSize);
     await new Promise((r) => setTimeout(r, 300));
 

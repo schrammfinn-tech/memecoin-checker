@@ -91,6 +91,10 @@ apiRouter.get("/whales/:tokenAddress", async (req: Request, res: Response) => {
     const result = await analyzeWhales(connection, tokenAddress, priceUsd, threshold, hours);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.json({
+      whalesEntering: 0, whalesExiting: 0, enteringDetails: [], exitingDetails: [],
+      largestSell: null, netAccumulation: 0, netAccumulationUsd: 0,
+      totalWhaleVolume: 0, botOwnershipPercent: 0, botWallets: 0, totalWalletsTracked: 0,
+    });
   }
 });
