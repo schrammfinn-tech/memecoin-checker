@@ -95,6 +95,19 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',syste
 <script>
 var appData=null,currentToken='',priceInfo=null,priceHistory=[],priceInterval=null;
 
+(async function checkRpc(){
+  try {
+    var statusResp = await fetch('/api/config/status');
+    if (statusResp.ok) {
+      var statusData = await statusResp.json();
+      if (!statusData.configured) {
+        window.location.href = '/setup';
+        return;
+      }
+    }
+  } catch(e) {}
+})();
+
 document.getElementById('tokenInput').addEventListener('keydown',function(e){if(e.key==='Enter')analyze();});
 
 async function analyze(){
