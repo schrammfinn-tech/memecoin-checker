@@ -38,7 +38,10 @@ export async function comprehensiveAnalyze(
 ): Promise<ComprehensiveRisk> {
   const connection = createConnection(rpcUrl);
 
-  const onChain = await helius.analyzeToken(tokenAddress);
+  const onChain = await Promise.race([
+    helius.analyzeToken(tokenAddress),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("RPC timeout fetching holder data")), 20000)),
+  ]);
   const holders = onChain.holders;
   const totalSupply = onChain.totalSupply || holders.reduce((s, h) => s + h.amount, 0);
 

@@ -29,7 +29,7 @@ apiRouter.get("/check/:tokenAddress", async (req: Request, res: Response) => {
     const { tokenAddress } = req.params;
     const helius = getHelius();
     const rpcUrl = getRpc();
-    const timeoutMs = parseInt(req.query.timeout as string) || 15000;
+    const timeoutMs = parseInt(req.query.timeout as string) || 30000;
     const result = await Promise.race([
       comprehensiveAnalyze(tokenAddress, helius, rpcUrl),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Analysis timed out — partial results may be available")), timeoutMs)),

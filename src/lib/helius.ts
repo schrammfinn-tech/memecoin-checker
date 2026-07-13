@@ -48,7 +48,7 @@ export class HeliusClient {
     this.rpcUrl = rpcUrl;
   }
 
-  private async rpcCall(method: string, params: any[], retries = 3): Promise<any> {
+  private async rpcCall(method: string, params: any[], retries = 2): Promise<any> {
     const now = Date.now();
     const wait = RATE_LIMIT_DELAY - (now - this.lastCall);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
@@ -58,7 +58,7 @@ export class HeliusClient {
         const { data } = await axios.post(
           this.rpcUrl,
           { jsonrpc: "2.0", id: 1, method, params },
-          { timeout: 15000 }
+          { timeout: 8000 }
         );
         this.lastCall = Date.now();
         if (data.error) {
