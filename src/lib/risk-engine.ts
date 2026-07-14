@@ -47,9 +47,6 @@ export async function comprehensiveAnalyze(
 
   const botResult = detectBots(holders, totalSupply);
 
-  // Small delay to let Helius rate limiting cool down before launching parallel RPC calls
-  await new Promise((r) => setTimeout(r, 800));
-
   // Run all independent operations in parallel
   const socialPromise = scanSocials(tokenAddress).catch(() => null);
   const clusterPromise = buildTransferGraph(connection, tokenAddress, 50)
