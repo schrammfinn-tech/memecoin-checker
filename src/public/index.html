@@ -40,10 +40,6 @@ body{
     radial-gradient(ellipse at 50% 50%,rgba(0,255,136,0.03) 0%,transparent 70%);
   background-size:48px 48px,48px 48px,100% 100%,100% 100%,100% 100%;
 }
-body::after{
-  content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
-  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
-}
 
 ::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -341,6 +337,7 @@ body::after{
 .ticker-item .m{color:var(--muted);font-size:10px}
 
 @keyframes ticker-scroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
 
 @media(max-width:700px){
   .top{padding:10px 14px}
