@@ -1,4 +1,5 @@
 import axios from "axios";
+import { callWithRetry, isRateLimit, RateLimitError } from "./rate-limiter";
 
 export interface LargestAccount {
   address: string;
@@ -38,53 +39,76 @@ const KNOWN_PROGRAMS: Record<string, string> = {
   "LBUZKhRxPF3X4jYFbMGqCcEYLcQft2Mn4vEq7zwqR4R": "Meteora",
 };
 
-const RATE_LIMIT_DELAY = 500;
-
 export class HeliusClient {
   private rpcUrl: string;
-  private lastCall = 0;
 
   constructor(rpcUrl: string) {
     this.rpcUrl = rpcUrl;
   }
 
-  private async rpcCall(method: string, params: any[], retries = 1): Promise<any> {
-    const now = Date.now();
-    const wait = RATE_LIMIT_DELAY - (now - this.lastCall);
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  // All calls go through the shared global limiter (see ./rate-limiter), which
+  // enforces the app-wide rate/concurrency budget and retries 429s with backoff.
+  private async rpcCall(method: string, params: any, retries?: number): Promise<any> {
+    return callWithRetry(async () => {
+      const resp = await axios.post(
+        this.rpcUrl,
+        { jsonrpc: "2.0", id: 1, method, params },
+        { timeout: 12000, validateStatus: () => true }
+      );
 
-    for (let attempt = 0; attempt < retries; attempt++) {
-      try {
-        const { data } = await axios.post(
-          this.rpcUrl,
-          { jsonrpc: "2.0", id: 1, method, params },
-          { timeout: 5000 }
-        );
-        this.lastCall = Date.now();
-        if (data.error) {
-          const msg = data.error.message || "";
-          if (data.error.code === 429 || msg.includes("overloaded") || msg.includes("try again")) {
-            const backoff = Math.pow(2, attempt) * 1500;
-            await new Promise((r) => setTimeout(r, backoff));
-            continue;
-          }
-          throw new Error(`RPC error: ${msg}`);
-        }
-        return data.result;
-      } catch (err: any) {
-        if (attempt < retries - 1) {
-          const backoff = Math.pow(2, attempt) * 1500;
-          await new Promise((r) => setTimeout(r, backoff));
-          continue;
-        }
-        throw err;
+      if (resp.status === 429) {
+        throw new RateLimitError(`HTTP 429 on ${method}`);
       }
-    }
+      if (resp.status < 200 || resp.status >= 300) {
+        const e: any = new Error(`RPC HTTP ${resp.status} on ${method}`);
+        e.status = resp.status;
+        throw e;
+      }
+
+      const data = resp.data;
+      if (data && data.error) {
+        const msg = data.error.message || "";
+        if (isRateLimit(data.error.code, msg)) {
+          throw new RateLimitError(`RPC ${method}: ${msg}`);
+        }
+        throw new Error(`RPC error (${method}): ${msg}`);
+      }
+      return data ? data.result : undefined;
+    }, retries);
   }
 
   async getTokenLargestAccounts(mint: string): Promise<LargestAccount[]> {
-    return this.rpcCall("getTokenLargestAccounts", [mint], 1)
+    return this.rpcCall("getTokenLargestAccounts", [mint])
       .then((r: any) => (r?.value || []).slice(0, 80), () => []);
+  }
+
+  // DAS API — returns token accounts with owner + amount resolved. Reliable on Helius.
+  private async getTokenAccountsDAS(mint: string, decimals: number, maxPages = 5): Promise<{ address: string; owner: string; uiAmount: number; rawAmount: number }[]> {
+    const all: { address: string; owner: string; uiAmount: number; rawAmount: number }[] = [];
+    const divisor = Math.pow(10, decimals);
+    for (let page = 1; page <= maxPages; page++) {
+      let result: any;
+      try {
+        result = await this.rpcCall("getTokenAccounts", { mint, limit: 1000, page });
+      } catch {
+        break;
+      }
+      const accts = result?.token_accounts || [];
+      if (accts.length === 0) break;
+      for (const a of accts) {
+        const raw = Number(a.amount) || 0;
+        if (raw <= 0) continue;
+        all.push({
+          address: a.address,
+          owner: a.owner || "unknown",
+          uiAmount: raw / divisor,
+          rawAmount: raw,
+        });
+      }
+      if (accts.length < 1000) break;
+    }
+    all.sort((a, b) => b.uiAmount - a.uiAmount);
+    return all;
   }
 
   private async getHoldersFromProgramAccounts(mint: string): Promise<LargestAccount[]> {
@@ -111,7 +135,7 @@ export class HeliusClient {
   }
 
   async getTokenSupply(mint: string): Promise<{ amount: string; decimals: number; uiAmount: number }> {
-    const result = await this.rpcCall("getTokenSupply", [mint], 2);
+    const result = await this.rpcCall("getTokenSupply", [mint]);
     return result.value;
   }
 
@@ -145,15 +169,30 @@ export class HeliusClient {
     } catch {
       supply = { amount: "0", decimals: 0, uiAmount: 1 };
     }
+    const totalSupply = supply.uiAmount || 1;
 
-    // Optional: try to get holders (fail fast if slow)
+    // Primary: DAS API getTokenAccounts (owner + amount resolved, reliable on Helius)
+    try {
+      const das = await this.getTokenAccountsDAS(mint, supply.decimals);
+      if (das.length > 0) {
+        return das.slice(0, limit).map((a) => ({
+          address: a.address,
+          owner: a.owner,
+          share: a.uiAmount / totalSupply,
+          amount: a.uiAmount,
+          isContract: a.owner !== "unknown" ? a.owner.length > 44 : false,
+          isDex: DEX_PROGRAMS.has(a.owner),
+          knownLabel: KNOWN_PROGRAMS[a.owner] || null,
+        }));
+      }
+    } catch {}
+
+    // Fallback: getTokenLargestAccounts + owner resolution
     let topAccounts: LargestAccount[] = [];
     try {
       const largest = await this.getTokenLargestAccounts(mint);
       topAccounts = largest.slice(0, limit);
     } catch {}
-
-    const totalSupply = supply.uiAmount || 1;
 
     let ownerMap = new Map<string, string>();
     if (resolveOwners && topAccounts.length > 0) {
@@ -179,7 +218,9 @@ export class HeliusClient {
 
   async analyzeToken(mint: string): Promise<TokenOnChainAnalysis> {
     const holders = await this.getTopHolders(mint, 80, true);
-    const totalSupply = holders.reduce((s, h) => s + h.amount, 0) * (1 / Math.max(holders[0]?.share || 0.01, 0.01));
+    const totalSupply = holders[0] && holders[0].share > 0
+      ? holders[0].amount / holders[0].share
+      : holders.reduce((s, h) => s + h.amount, 0);
 
     let dexShare = 0;
     let contractShare = 0;

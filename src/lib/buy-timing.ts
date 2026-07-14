@@ -89,8 +89,10 @@ export function assessBuyTiming(
     }
   }
 
+  // Only flag "all dust" for tokens with FEW holders. A token where the top 80
+  // holders each hold <0.1% is widely distributed (1000s of holders) = healthy, not rugged.
   const substantialHolders = walletHolders.filter((h) => h.share > 0.001);
-  if (walletHolders.length > 0 && substantialHolders.length === 0 && walletHolders.length >= 3) {
+  if (walletHolders.length >= 3 && walletHolders.length < 25 && substantialHolders.length === 0) {
     ruggedReasons.push("All holders have dust amounts — token has been dumped");
     isRugged = true;
   }

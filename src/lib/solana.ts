@@ -1,16 +1,34 @@
 import { Connection, PublicKey, ParsedTransactionWithMeta } from "@solana/web3.js";
+import { callWithRetry, RateLimitError } from "./rate-limiter";
 
 export function createConnection(rpcUrl: string): Connection {
-  const timedFetch = (input: any, init?: any): Promise<Response> => {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 5000);
-    const mergedInit: RequestInit = { ...init, signal: init?.signal || ctrl.signal };
-    return fetch(input as any, mergedInit as any).finally(() => clearTimeout(timer));
+  // Every web3.js request goes through the shared global limiter so it shares
+  // the same rate/concurrency budget as the HeliusClient (they hit one endpoint).
+  // We handle 429s here and set disableRetryOnRateLimit so web3.js doesn't add
+  // its own uncoordinated retry burst on top (the source of the 429 log spam).
+  const rpcFetch = (input: any, init?: any): Promise<any> => {
+    return callWithRetry(async () => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      try {
+        const mergedInit: RequestInit = { ...(init || {}), signal: init?.signal || ctrl.signal };
+        const resp: any = await fetch(input as any, mergedInit as any);
+        if (resp.status === 429) {
+          try { await resp.text(); } catch { /* drain body, best effort */ }
+          throw new RateLimitError("HTTP 429 from RPC (web3.js)");
+        }
+        return resp;
+      } finally {
+        clearTimeout(timer);
+      }
+    });
   };
+
   return new Connection(rpcUrl, {
     commitment: "confirmed",
     confirmTransactionInitialTimeout: 60000,
-    fetch: timedFetch as any,
+    disableRetryOnRateLimit: true,
+    fetch: rpcFetch as any,
   });
 }
 
