@@ -377,7 +377,14 @@ body{
 </div>
 
 <script>
-var appData=null,currentToken='',priceInfo=null,priceHistory=[],priceInterval=null;
+var appData=null,currentToken='',priceInfo=null,priceHistory=[],priceInterval=null,_analyzeGen=0;
+
+function fetchWithTimeout(url, ms) {
+  ms = ms || 15000;
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, ms);
+  return fetch(url, { signal: ctrl.signal }).finally(function() { clearTimeout(timer); });
+}
 
 function getRecents() {
   try { return JSON.parse(localStorage.getItem('decipher_recents') || '[]'); } catch(e) { return []; }
@@ -479,6 +486,7 @@ async function analyze(){
   c.innerHTML='<div class="loading"><div class="spinner"></div><br><span style="font-size:14px;">Analyzing</span><br><span class="mono" style="font-size:12px;">'+addr.slice(0,16)+'...</span></div>';
   document.getElementById('analyzeBtnTop').disabled=true;
   document.getElementById('heroAnalyzeBtn').disabled=true;
+  var gen=++_analyzeGen;
 
   try{
     var resp=await fetch('/api/check/'+encodeURIComponent(addr));
@@ -488,7 +496,7 @@ async function analyze(){
     c.style.opacity='0';c.style.transition='opacity 0.15s';
     setTimeout(function(){c.style.opacity='1';render();},100);
   }catch(err){c.innerHTML='<div class="error">'+(err.message||'Network error - check that the server is running')+'</div>';}
-  finally{document.getElementById('analyzeBtnTop').disabled=false;document.getElementById('heroAnalyzeBtn').disabled=false;}
+  finally{if(gen===_analyzeGen){document.getElementById('analyzeBtnTop').disabled=false;document.getElementById('heroAnalyzeBtn').disabled=false;}}
 }
 
 function fmt(n){if(!n)return'0';if(n>=1e9)return(n/1e9).toFixed(2)+'B';if(n>=1e6)return(n/1e6).toFixed(2)+'M';if(n>=1e3)return(n/1e3).toFixed(2)+'K';if(n>=1)return n.toFixed(2);return n.toFixed(6);}
@@ -654,7 +662,7 @@ var priceHistory=[],priceInterval=null,lastPriceUsd=0;
 async function loadPriceData(){
   if(!currentToken)return;var el=document.getElementById('priceContent');if(!el)return;
   try{
-    var resp=await fetch('/api/price/'+encodeURIComponent(currentToken));
+    var resp=await fetchWithTimeout('/api/price/'+encodeURIComponent(currentToken));
     if(!resp.ok||!resp)throw new Error('');
     var p=await resp.json();
     if(!p||!p.pairAddress){el.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted);">No DEX pair found for this token</div>';return;}
@@ -707,7 +715,7 @@ function startPricePolling(){
 async function fetchPriceUpdate(){
   if(!currentToken)return;
   try{
-    var resp=await fetch('/api/price/'+encodeURIComponent(currentToken));
+    var resp=await fetchWithTimeout('/api/price/'+encodeURIComponent(currentToken),10000);
     if(!resp.ok)return;
     var p=await resp.json();
     if(!p||!p.priceUsd)return;
@@ -798,7 +806,7 @@ function redrawPriceChart(){
 async function loadWhaleData(){
   if(!currentToken)return;var el=document.getElementById('whaleData');if(!el)return;var card=document.getElementById('whaleCard');
   try{
-    var resp=await fetch('/api/whales/'+encodeURIComponent(currentToken)+'?threshold=1');
+    var resp=await fetchWithTimeout('/api/whales/'+encodeURIComponent(currentToken)+'?threshold=1');
     if(!resp.ok)throw new Error('');var w=await resp.json();
     var tf1=w.timeframes["1h"],tf2=w.timeframes["2h"],tf3=w.timeframes["3h"],tfa=w.timeframes["all"];
 
@@ -825,13 +833,15 @@ function tfRow(label,tf){
 
 // SNIPERS
 async function scanSnipers(){
-  if(!currentToken)return;var el=document.getElementById('sniperData');
+  if(!currentToken)return;var el=document.getElementById('sniperData');var btn=document.getElementById('sniperBtn');
   el.innerHTML='<div style="padding:8px 0;"><div class="spinner" style="width:14px;height:14px;"></div> Scanning...</div>';
+  if(btn)btn.disabled=true;
   try{
-    var resp=await fetch('/api/sniper/'+encodeURIComponent(currentToken));if(!resp.ok)throw new Error('');var snipers=await resp.json();
+    var resp=await fetchWithTimeout('/api/sniper/'+encodeURIComponent(currentToken));if(!resp.ok)throw new Error('');var snipers=await resp.json();
     if(snipers.length)el.innerHTML=snipers.slice(0,12).map(function(s){var t=s.timeToBuyMs<1000?s.timeToBuyMs+'ms':(s.timeToBuyMs/1000).toFixed(1)+'s';return'<div class="stat-row"><span class="mono">'+s.address.slice(0,22)+'...</span><span class="r">bought in '+t+'</span><span class="sv">'+p(s.share||0)+'</span></div>';}).join('');
     else el.innerHTML='<div style="color:var(--green);padding:4px 0;">No snipers detected</div>';
   }catch(e){el.innerHTML='<div class="error">Scan failed</div>';}
+  finally{if(btn)btn.disabled=false;}
 }
 
 // CLUSTER VIZ
