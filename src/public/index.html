@@ -489,7 +489,7 @@ async function analyze(){
   var gen=++_analyzeGen;
 
   try{
-    var resp=await fetch('/api/check/'+encodeURIComponent(addr));
+    var resp=await fetchWithTimeout('/api/check/'+encodeURIComponent(addr),25000);
     if(!resp.ok){var e=await resp.json().catch(function(){return{error:'Server error: '+resp.status};});throw new Error(e.error||'Request failed');}
     appData=await resp.json();
     document.getElementById('sniperBtn').style.display='inline-block';
