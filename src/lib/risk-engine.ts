@@ -8,6 +8,13 @@ import { analyzeLiquidityLock, LiquidityLockResult } from "./liquidity";
 import { scanSocials, SocialResult } from "./social-scanner";
 import { detectBots, BotDetectResult } from "./bot-detector";
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Operation timed out after ${ms}ms`)), ms)),
+  ]);
+}
+
 export interface ComprehensiveRisk {
   overallRisk: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   scoreBreakdown: {
@@ -38,32 +45,30 @@ export async function comprehensiveAnalyze(
 ): Promise<ComprehensiveRisk> {
   const connection = createConnection(rpcUrl);
 
-  const onChain = await Promise.race([
-    helius.analyzeToken(tokenAddress),
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("RPC timeout fetching holder data")), 15000)),
-  ]);
+  const onChain = await withTimeout(helius.analyzeToken(tokenAddress), 15000);
   const holders = onChain.holders;
   const totalSupply = onChain.totalSupply || holders.reduce((s, h) => s + h.amount, 0);
 
   const botResult = detectBots(holders, totalSupply);
 
   // Run all independent operations in parallel
-  const socialPromise = scanSocials(tokenAddress).catch(() => null);
-  const clusterPromise = buildTransferGraph(connection, tokenAddress, 50)
+  const socialPromise = withTimeout(scanSocials(tokenAddress), 10000).catch(() => null);
+  const clusterPromise = withTimeout(
+    buildTransferGraph(connection, tokenAddress, 50)
     .then(({ edges, nodeShares }) => {
       const clustersFound = findClusters(edges, nodeShares);
       return computeClusterShare(clustersFound, holders, totalSupply);
-    }).catch(() => null);
-  const bundlePromise = detectBundledLaunch(connection, tokenAddress, totalSupply).catch(() => null);
-  const devPromise = getDevProfile(connection, tokenAddress).catch(() => null);
-  const liquidityPromise = (async () => {
+    }), 15000).catch(() => null);
+  const bundlePromise = withTimeout(detectBundledLaunch(connection, tokenAddress, totalSupply), 15000).catch(() => null);
+  const devPromise = withTimeout(getDevProfile(connection, tokenAddress), 15000).catch(() => null);
+  const liquidityPromise = withTimeout((async () => {
     let deployer = "unknown";
     if (holders.length > 0) {
       const wallet = holders.find((h) => h.owner !== "unknown" && !h.isDex && !h.isContract);
       deployer = wallet?.owner ?? "unknown";
     }
     return analyzeLiquidityLock(connection, tokenAddress, deployer).catch(() => null);
-  })();
+  })(), 10000).catch(() => null);
 
   const [socialRaw, clustersRaw, bundleRaw, devRaw, liquidityRaw] =
     await Promise.allSettled([socialPromise, clusterPromise, bundlePromise, devPromise, liquidityPromise]);
@@ -75,7 +80,7 @@ export async function comprehensiveAnalyze(
   let devProfileVal = devRaw.status === "fulfilled" ? devRaw.value : null;
   if (devProfileVal?.deployerAddress && devProfileVal.deployerAddress !== "unknown") {
     try {
-      const s2 = await scanSocials(tokenAddress, devProfileVal.deployerAddress);
+      const s2 = await withTimeout(scanSocials(tokenAddress, devProfileVal.deployerAddress), 10000);
       if (s2) socialResult = s2;
     } catch(e) { /* keep original */ }
   }

@@ -494,7 +494,7 @@ async function analyze(){
     appData=await resp.json();
     document.getElementById('sniperBtn').style.display='inline-block';
     c.style.opacity='0';c.style.transition='opacity 0.15s';
-    setTimeout(function(){c.style.opacity='1';render();},100);
+    setTimeout(function(){c.style.opacity='1';try{render();}catch(e){c.innerHTML='<div class="error">Render error: '+(e.message||'Unknown')+'</div>';}},100);
   }catch(err){c.innerHTML='<div class="error">'+(err.message||'Network error - check that the server is running')+'</div>';}
   finally{if(gen===_analyzeGen){document.getElementById('analyzeBtnTop').disabled=false;document.getElementById('heroAnalyzeBtn').disabled=false;}}
 }
