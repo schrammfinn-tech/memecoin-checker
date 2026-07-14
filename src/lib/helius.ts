@@ -39,6 +39,10 @@ const KNOWN_PROGRAMS: Record<string, string> = {
 };
 
 const RATE_LIMIT_DELAY = 500;
+const FALLBACK_RPCS = [
+  "https://api.mainnet-beta.solana.com",
+  "https://solana-api.projectserum.com",
+];
 
 export class HeliusClient {
   private rpcUrl: string;
@@ -83,7 +87,23 @@ export class HeliusClient {
   }
 
   async getTokenLargestAccounts(mint: string): Promise<LargestAccount[]> {
-    return this.rpcCall("getTokenLargestAccounts", [mint], 3).then((r: any) => (r?.value || []).slice(0, 80), () => []);
+    // Try Helius first (2 retries)
+    const heliusResult = await this.rpcCall("getTokenLargestAccounts", [mint], 2)
+      .then((r: any) => (r?.value || []).slice(0, 80))
+      .catch(() => []);
+    if (heliusResult.length > 0) return heliusResult;
+
+    // Fallback to public RPCs
+    for (const rpc of FALLBACK_RPCS) {
+      try {
+        const { data } = await axios.post(rpc,
+          { jsonrpc: "2.0", id: 1, method: "getTokenLargestAccounts", params: [mint] },
+          { timeout: 8000 });
+        const result = (data?.result?.value || []).slice(0, 80);
+        if (result.length > 0) return result;
+      } catch { continue; }
+    }
+    return [];
   }
 
   private async getHoldersFromProgramAccounts(mint: string): Promise<LargestAccount[]> {
@@ -110,8 +130,21 @@ export class HeliusClient {
   }
 
   async getTokenSupply(mint: string): Promise<{ amount: string; decimals: number; uiAmount: number }> {
-    const result = await this.rpcCall("getTokenSupply", [mint]);
-    return result.value;
+    const heliusResult = await this.rpcCall("getTokenSupply", [mint], 2)
+      .then((r: any) => r?.value)
+      .catch(() => null);
+    if (heliusResult) return heliusResult;
+
+    for (const rpc of FALLBACK_RPCS) {
+      try {
+        const { data } = await axios.post(rpc,
+          { jsonrpc: "2.0", id: 1, method: "getTokenSupply", params: [mint] },
+          { timeout: 8000 });
+        const result = data?.result?.value;
+        if (result) return result;
+      } catch { continue; }
+    }
+    throw new Error("Cannot fetch token supply");
   }
 
   private async getAccountOwnerBatched(addresses: string[]): Promise<Map<string, string>> {
@@ -137,17 +170,22 @@ export class HeliusClient {
   }
 
   async getTopHolders(mint: string, limit = 80, resolveOwners = true): Promise<HolderInfo[]> {
-    // Stagger calls to avoid rate limiting
-    const largest = await this.getTokenLargestAccounts(mint);
-    await new Promise((r) => setTimeout(r, 300));
-    const supply = await this.getTokenSupply(mint);
+    let supply: { amount: string; decimals: number; uiAmount: number } = { amount: "0", decimals: 0, uiAmount: 1 };
+    try {
+      supply = await this.getTokenSupply(mint);
+    } catch {}
 
-    let topAccounts = largest.slice(0, limit);
-    
-    // Fallback to getProgramAccounts if largest accounts returned empty
+    // Use getProgramAccounts as primary (more reliable, works for all mints)
+    let topAccounts: LargestAccount[] = [];
+    try {
+      topAccounts = await this.getHoldersFromProgramAccounts(mint).then(r => r.slice(0, limit));
+    } catch {}
+
+    // Fallback to getTokenLargestAccounts if program accounts returned nothing
     if (topAccounts.length === 0) {
       try {
-        topAccounts = await this.getHoldersFromProgramAccounts(mint).then(r => r.slice(0, limit));
+        const largest = await this.getTokenLargestAccounts(mint);
+        topAccounts = largest.slice(0, limit);
       } catch {}
     }
 
