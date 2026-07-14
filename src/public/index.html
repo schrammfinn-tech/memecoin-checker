@@ -382,8 +382,12 @@ var appData=null,currentToken='',priceInfo=null,priceHistory=[],priceInterval=nu
 function fetchWithTimeout(url, ms) {
   ms = ms || 15000;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, ms);
-  return fetch(url, { signal: ctrl.signal }).finally(function() { clearTimeout(timer); });
+  return Promise.race([
+    fetch(url, { signal: ctrl.signal }),
+    new Promise(function(_, reject) {
+      setTimeout(function() { ctrl.abort(); reject(new Error('Request timed out')); }, ms);
+    })
+  ]);
 }
 
 function getRecents() {
