@@ -48,7 +48,7 @@ export class HeliusClient {
     this.rpcUrl = rpcUrl;
   }
 
-  private async rpcCall(method: string, params: any[], retries = 2): Promise<any> {
+  private async rpcCall(method: string, params: any[], retries = 3): Promise<any> {
     const now = Date.now();
     const wait = RATE_LIMIT_DELAY - (now - this.lastCall);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
@@ -83,12 +83,7 @@ export class HeliusClient {
   }
 
   async getTokenLargestAccounts(mint: string): Promise<LargestAccount[]> {
-    try {
-      const result = await this.rpcCall("getTokenLargestAccounts", [mint]);
-      return (result?.value || []).slice(0, 80);
-    } catch (e) {
-      return [];
-    }
+    return this.rpcCall("getTokenLargestAccounts", [mint], 3).then((r: any) => (r?.value || []).slice(0, 80), () => []);
   }
 
   private async getHoldersFromProgramAccounts(mint: string): Promise<LargestAccount[]> {
@@ -142,12 +137,20 @@ export class HeliusClient {
   }
 
   async getTopHolders(mint: string, limit = 80, resolveOwners = true): Promise<HolderInfo[]> {
-    const [supply, largest] = await Promise.all([
-      this.getTokenSupply(mint),
-      this.getTokenLargestAccounts(mint),
-    ]);
+    // Stagger calls to avoid rate limiting
+    const largest = await this.getTokenLargestAccounts(mint);
+    await new Promise((r) => setTimeout(r, 300));
+    const supply = await this.getTokenSupply(mint);
 
-    const topAccounts = largest.slice(0, limit);
+    let topAccounts = largest.slice(0, limit);
+    
+    // Fallback to getProgramAccounts if largest accounts returned empty
+    if (topAccounts.length === 0) {
+      try {
+        topAccounts = await this.getHoldersFromProgramAccounts(mint).then(r => r.slice(0, limit));
+      } catch {}
+    }
+
     const totalSupply = supply.uiAmount || 1;
 
     let ownerMap = new Map<string, string>();

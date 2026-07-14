@@ -1,9 +1,16 @@
 import { Connection, PublicKey, ParsedTransactionWithMeta } from "@solana/web3.js";
 
 export function createConnection(rpcUrl: string): Connection {
+  const timedFetch = (input: any, init?: any): Promise<Response> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    const mergedInit: RequestInit = { ...init, signal: init?.signal || ctrl.signal };
+    return fetch(input as any, mergedInit as any).finally(() => clearTimeout(timer));
+  };
   return new Connection(rpcUrl, {
     commitment: "confirmed",
     confirmTransactionInitialTimeout: 60000,
+    fetch: timedFetch as any,
   });
 }
 
