@@ -36,6 +36,9 @@
     "appId": "com.decipher.app",
     "productName": "DECIPHER",
     "npmRebuild": false,
+    "extraResources": [
+      ".env"
+    ],
     "files": [
       "dist/**/*",
       "node_modules/**/*",
