@@ -495,10 +495,10 @@ async function analyze(){
   try{
     var resp=await fetchWithTimeout('/api/check/'+encodeURIComponent(addr),25000);
     if(!resp.ok){var e=await resp.json().catch(function(){return{error:'Server error: '+resp.status};});throw new Error(e.error||'Request failed');}
-    appData=await resp.json();
+    var result=await resp.json();appData=result;
     document.getElementById('sniperBtn').style.display='inline-block';
     c.style.opacity='0';c.style.transition='opacity 0.15s';
-    setTimeout(function(){c.style.opacity='1';try{render();}catch(e){c.innerHTML='<div class="error">Render error: '+(e.message||'Unknown')+'</div>';}},100);
+    setTimeout(function(){c.style.opacity='1';try{render(result);}catch(e){c.innerHTML='<div class="error">Render error: '+(e.message||'Unknown')+'</div>';}},100);
   }catch(err){c.innerHTML='<div class="error">'+(err.message||'Network error - check that the server is running')+'</div>';}
   finally{if(gen===_analyzeGen){document.getElementById('analyzeBtnTop').disabled=false;document.getElementById('heroAnalyzeBtn').disabled=false;}}
 }
@@ -506,8 +506,8 @@ async function analyze(){
 function fmt(n){if(!n)return'0';if(n>=1e9)return(n/1e9).toFixed(2)+'B';if(n>=1e6)return(n/1e6).toFixed(2)+'M';if(n>=1e3)return(n/1e3).toFixed(2)+'K';if(n>=1)return n.toFixed(2);return n.toFixed(6);}
 function p(v){return(v*100).toFixed(1)+'%';}
 
-function render(){
-  var d=appData,sb=d.scoreBreakdown||{},h=d.holders||[];
+function render(data){
+  var d=data||appData,sb=d.scoreBreakdown||{},h=d.holders||[];
   var wh=h.filter(function(x){return!x.isContract&&!x.isDex;});
   var lp=d.liquidityLock,dev=d.devProfile,bndl=d.bundleDetection,cl=d.clusters||[],social=d.socialResult,bot=d.botDetection,bt=d.buyTiming;
   var t10=wh.slice(0,10).reduce(function(s,x){return s+(x.share||0);},0);
