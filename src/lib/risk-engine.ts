@@ -40,7 +40,7 @@ export async function comprehensiveAnalyze(
 
   const onChain = await Promise.race([
     helius.analyzeToken(tokenAddress),
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("RPC timeout fetching holder data")), 28000)),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("RPC timeout fetching holder data")), 15000)),
   ]);
   const holders = onChain.holders;
   const totalSupply = onChain.totalSupply || holders.reduce((s, h) => s + h.amount, 0);

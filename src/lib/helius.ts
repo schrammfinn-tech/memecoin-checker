@@ -39,10 +39,6 @@ const KNOWN_PROGRAMS: Record<string, string> = {
 };
 
 const RATE_LIMIT_DELAY = 500;
-const FALLBACK_RPCS = [
-  "https://api.mainnet-beta.solana.com",
-  "https://solana-api.projectserum.com",
-];
 
 export class HeliusClient {
   private rpcUrl: string;
@@ -52,7 +48,7 @@ export class HeliusClient {
     this.rpcUrl = rpcUrl;
   }
 
-  private async rpcCall(method: string, params: any[], retries = 3): Promise<any> {
+  private async rpcCall(method: string, params: any[], retries = 1): Promise<any> {
     const now = Date.now();
     const wait = RATE_LIMIT_DELAY - (now - this.lastCall);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
@@ -62,7 +58,7 @@ export class HeliusClient {
         const { data } = await axios.post(
           this.rpcUrl,
           { jsonrpc: "2.0", id: 1, method, params },
-          { timeout: 8000 }
+          { timeout: 5000 }
         );
         this.lastCall = Date.now();
         if (data.error) {
@@ -87,23 +83,8 @@ export class HeliusClient {
   }
 
   async getTokenLargestAccounts(mint: string): Promise<LargestAccount[]> {
-    // Try Helius first (2 retries)
-    const heliusResult = await this.rpcCall("getTokenLargestAccounts", [mint], 2)
-      .then((r: any) => (r?.value || []).slice(0, 80))
-      .catch(() => []);
-    if (heliusResult.length > 0) return heliusResult;
-
-    // Fallback to public RPCs
-    for (const rpc of FALLBACK_RPCS) {
-      try {
-        const { data } = await axios.post(rpc,
-          { jsonrpc: "2.0", id: 1, method: "getTokenLargestAccounts", params: [mint] },
-          { timeout: 8000 });
-        const result = (data?.result?.value || []).slice(0, 80);
-        if (result.length > 0) return result;
-      } catch { continue; }
-    }
-    return [];
+    return this.rpcCall("getTokenLargestAccounts", [mint], 1)
+      .then((r: any) => (r?.value || []).slice(0, 80), () => []);
   }
 
   private async getHoldersFromProgramAccounts(mint: string): Promise<LargestAccount[]> {
@@ -130,21 +111,8 @@ export class HeliusClient {
   }
 
   async getTokenSupply(mint: string): Promise<{ amount: string; decimals: number; uiAmount: number }> {
-    const heliusResult = await this.rpcCall("getTokenSupply", [mint], 2)
-      .then((r: any) => r?.value)
-      .catch(() => null);
-    if (heliusResult) return heliusResult;
-
-    for (const rpc of FALLBACK_RPCS) {
-      try {
-        const { data } = await axios.post(rpc,
-          { jsonrpc: "2.0", id: 1, method: "getTokenSupply", params: [mint] },
-          { timeout: 8000 });
-        const result = data?.result?.value;
-        if (result) return result;
-      } catch { continue; }
-    }
-    throw new Error("Cannot fetch token supply");
+    const result = await this.rpcCall("getTokenSupply", [mint], 2);
+    return result.value;
   }
 
   private async getAccountOwnerBatched(addresses: string[]): Promise<Map<string, string>> {
@@ -170,24 +138,20 @@ export class HeliusClient {
   }
 
   async getTopHolders(mint: string, limit = 80, resolveOwners = true): Promise<HolderInfo[]> {
-    let supply: { amount: string; decimals: number; uiAmount: number } = { amount: "0", decimals: 0, uiAmount: 1 };
+    // Fast path: get supply first (critical)
+    let supply: { amount: string; decimals: number; uiAmount: number };
     try {
       supply = await this.getTokenSupply(mint);
-    } catch {}
+    } catch {
+      supply = { amount: "0", decimals: 0, uiAmount: 1 };
+    }
 
-    // Use getProgramAccounts as primary (more reliable, works for all mints)
+    // Optional: try to get holders (fail fast if slow)
     let topAccounts: LargestAccount[] = [];
     try {
-      topAccounts = await this.getHoldersFromProgramAccounts(mint).then(r => r.slice(0, limit));
+      const largest = await this.getTokenLargestAccounts(mint);
+      topAccounts = largest.slice(0, limit);
     } catch {}
-
-    // Fallback to getTokenLargestAccounts if program accounts returned nothing
-    if (topAccounts.length === 0) {
-      try {
-        const largest = await this.getTokenLargestAccounts(mint);
-        topAccounts = largest.slice(0, limit);
-      } catch {}
-    }
 
     const totalSupply = supply.uiAmount || 1;
 

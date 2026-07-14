@@ -3,7 +3,7 @@ import { Connection, PublicKey, ParsedTransactionWithMeta } from "@solana/web3.j
 export function createConnection(rpcUrl: string): Connection {
   const timedFetch = (input: any, init?: any): Promise<Response> => {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 10000);
+    const timer = setTimeout(() => ctrl.abort(), 5000);
     const mergedInit: RequestInit = { ...init, signal: init?.signal || ctrl.signal };
     return fetch(input as any, mergedInit as any).finally(() => clearTimeout(timer));
   };
