@@ -67,13 +67,26 @@ var successMsg = document.getElementById('successMsg');
 var statusRow = document.getElementById('statusRow');
 var statusText = document.getElementById('statusText');
 
+function fetchWithTimeout(url, ms, opts) {
+  ms = ms || 10000;
+  var ctrl = new AbortController();
+  opts = opts || {};
+  opts.signal = ctrl.signal;
+  return Promise.race([
+    fetch(url, opts),
+    new Promise(function(_, reject) {
+      setTimeout(function() { ctrl.abort(); reject(new Error('Request timed out')); }, ms);
+    })
+  ]);
+}
+
 document.getElementById('heliusKey').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') saveConfig();
 });
 
 async function loadStatus() {
   try {
-    var resp = await fetch('/api/config/status');
+    var resp = await fetchWithTimeout('/api/config/status', 8000);
     var data = await resp.json();
     statusRow.style.display = 'flex';
     if (data.configured) {
@@ -111,7 +124,7 @@ async function saveConfig() {
   btn.innerHTML = '<span class="spinner"></span>Saving...';
 
   try {
-    var resp = await fetch('/api/config/save', {
+    var resp = await fetchWithTimeout('/api/config/save', 10000, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ heliusRpcUrl: key })

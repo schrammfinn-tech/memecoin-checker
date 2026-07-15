@@ -52,7 +52,10 @@ apiRouter.get("/sniper/:tokenAddress", async (req: Request, res: Response) => {
     const helius = getHelius();
     const holders = await helius.getTopHolders(tokenAddress, 80, false);
     const wallets = holders.filter((h) => !h.isContract && !h.isDex).slice(0, 5);
-    const results = await detectSnipers(connection, tokenAddress, wallets, threshold);
+    const results = await Promise.race([
+      detectSnipers(connection, tokenAddress, wallets, threshold),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Sniper scan timed out")), 20000)),
+    ]);
     res.json(results);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -94,7 +97,10 @@ apiRouter.get("/whales/:tokenAddress", async (req: Request, res: Response) => {
       priceUsd = priceData?.priceUsd ?? 0;
     } catch {}
 
-    const result = await analyzeWhales(connection, tokenAddress, priceUsd, threshold);
+    const result = await Promise.race([
+      analyzeWhales(connection, tokenAddress, priceUsd, threshold),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Whale analysis timed out")), 20000)),
+    ]);
     res.json(result);
   } catch (err: any) {
     res.json({

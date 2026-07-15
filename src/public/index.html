@@ -425,7 +425,7 @@ renderRecents();
 
 (async function checkRpc(){
   try {
-    var statusResp = await fetch('/api/config/status');
+    var statusResp = await fetchWithTimeout('/api/config/status', 8000);
     if (statusResp.ok) {
       var statusData = await statusResp.json();
       if (!statusData.configured) {
@@ -438,7 +438,7 @@ renderRecents();
 
 (async function loadTicker(){
   try {
-    var resp = await fetch('/api/gainers');
+    var resp = await fetchWithTimeout('/api/gainers', 10000);
     if (!resp.ok) return;
     var gainers = await resp.json();
     if (!gainers.length) return;

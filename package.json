@@ -1,6 +1,6 @@
 {
   "name": "decipher",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "DECIPHER — On-chain analysis tool for Solana memecoins: holder clustering, bundle detection, liquidity locks, dev history tracking, social scanner, and risk scoring",
   "main": "dist/electron/main.js",
   "author": "DECIPHER",
